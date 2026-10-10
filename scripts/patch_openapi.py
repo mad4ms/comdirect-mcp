@@ -9,9 +9,12 @@ This script normalizes those schemas so code generation works reliably.
 """
 
 import json
+import sys
 from pathlib import Path
 
-SPEC_PATH = Path("tmp/comdirect_openapi.json")
+# Default: the spec downloaded by bootstrap_client.sh, independent of the current directory.
+DEFAULT_SPEC_PATH = Path(__file__).resolve().parent.parent / "tmp" / "comdirect_openapi.json"
+SPEC_PATH = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_SPEC_PATH
 
 if not SPEC_PATH.exists():
     raise RuntimeError(f"Spec file not found: {SPEC_PATH}")

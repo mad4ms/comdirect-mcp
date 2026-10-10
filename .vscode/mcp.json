@@ -1,16 +1,9 @@
 {
     "servers": {
         "comdirect": {
-            "command": "${workspaceFolder}/.venv/bin/python",
-            "args": [
-                "${workspaceFolder}/mcp_server.py"
-            ],
-            "env": {
-                "COMDIRECT_USERNAME": "your_username",
-                "COMDIRECT_PASSWORD": "your_password",
-                "COMDIRECT_CLIENT_ID": "your_client_id",
-                "COMDIRECT_CLIENT_SECRET": "your_client_secret"
-            }
+            "type": "stdio",
+            "command": "${workspaceFolder}/.venv/bin/comdirect-mcp",
+            "envFile": "${workspaceFolder}/.env"
         }
     }
 }

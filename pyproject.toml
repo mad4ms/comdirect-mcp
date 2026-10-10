@@ -1,72 +1,87 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["uv_build>=0.13.0,<0.14"]
+build-backend = "uv_build"
 
 [project]
-name = "comdirect_api_wrapper"
-version = "0.3.1"
-description = "Python module for comdirect REST api"
+name = "comdirect-mcp"
+version = "0.4.0"
+description = "MCP server and typed Python client for the comdirect banking REST API"
 readme = "README.md"
 requires-python = ">=3.12"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     {name = "Michael Adams", email = "m@ad4ms.de"}
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "Topic :: Software Development :: Build Tools",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
 ]
-keywords = ["comdirect", "rest", "api"]
+keywords = ["comdirect", "banking", "mcp", "model-context-protocol", "mcp-server", "llm", "ai-agents"]
 dependencies = [
-    "pillow",
-    "requests",
-    "urllib3 >= 1.25.3, < 3.0.0",
-    "python-dateutil",
-    "pydantic>2",
-    "typing-extensions",
-    "mcp>=1.25.0",
+    "mcp>=2.3.0,<3",
+    "keyring>=25.7.0",
+    "python-dotenv>=1.2.4",
+    "requests>=2.34.2",
+    "urllib3>=2.8.0,<3",
+    "python-dateutil>=2.9.0.post0",
+    "pydantic>=2.14.0,<3",
+    "typing-extensions>=4.16.0",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "flake8",
-    "black",
-    "pre-commit",
-    "pytest",
-    "build",
-    "python-dotenv",
-    "openapi-generator-cli>=7.18.0",
+# Image display for the interactive PhotoTAN callback in comdirect_mcp.utils
+phototan = [
+    "pillow>=12.3.0",
 ]
 
+[project.scripts]
+comdirect-mcp = "comdirect_mcp.cli:main"
+
 [project.urls]
-"Bug Reports" = "https://github.com/mad4ms/comdirect-api-wrapper/issues"
-"Source" = "https://github.com/mad4ms/comdirect-api-wrapper/"
+Homepage = "https://github.com/mad4ms/comdirect-mcp"
+Documentation = "https://github.com/mad4ms/comdirect-mcp/tree/main/docs"
+Issues = "https://github.com/mad4ms/comdirect-mcp/issues"
+Changelog = "https://github.com/mad4ms/comdirect-mcp/blob/main/CHANGELOG.md"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[dependency-groups]
+dev = [
+    "comdirect-mcp[phototan]",
+    "ruff>=0.17.0",
+    "mypy>=2.4.0",
+    "pre-commit>=4.6.2",
+    "pytest>=9.1.1",
+    "openapi-generator-cli>=7.26.0",
+]
 
-[tool.black]
+[tool.ruff]
 line-length = 119
-target-version = ['py312']
-include = '\.pyi?$'
+target-version = "py312"
+# Generated vendor code, see docs/how-to/regenerate-openapi-client.md
+extend-exclude = ["src/comdirect_mcp/_openapi"]
 
-[tool.tox]
-legacy_tox_ini = """
-[tox]
-envlist = py3
-minversion = 3.3.0
-isolated_build = true
+[tool.ruff.lint]
+# pycodestyle, pyflakes, isort, pyupgrade, bugbear
+select = ["E", "F", "W", "I", "UP", "B"]
 
-[testenv]
-deps =
-    flake8
-    pytest
-    build
-commands =
-    python -m build
-    flake8 .
-    #py.test tests {posargs}
-"""
+[tool.mypy]
+files = ["src/comdirect_mcp"]
+exclude = ["src/comdirect_mcp/_openapi/"]
+check_untyped_defs = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "comdirect_mcp._openapi.*"
+ignore_errors = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/mad4ms/comdirect-mcp/security/advisories/new
+    about: Please report security issues privately, not as a public issue.
+  - name: Documentation
+    url: https://github.com/mad4ms/comdirect-mcp/tree/main/docs
+    about: Setup, client configuration, login flow and troubleshooting.
