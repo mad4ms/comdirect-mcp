@@ -13,7 +13,7 @@ Using the server:
 
 - [Get comdirect API access](how-to/get-comdirect-api-access.md)
 - [Manage credentials](how-to/manage-credentials.md): OS keychain, VS Code inputs, environment, `.env`
-- [Configure MCP clients](how-to/configure-mcp-clients.md): Claude Desktop, Claude Code, VS Code, LM Studio, others
+- [Configure MCP clients](how-to/configure-mcp-clients.md): Claude Desktop, Claude Code, VS Code, LM Studio, Ollama, others
 - [Use a local model](how-to/use-a-local-model.md)
 - [Troubleshoot](how-to/troubleshoot.md)
 - [Use the Python library](how-to/use-the-python-library.md)

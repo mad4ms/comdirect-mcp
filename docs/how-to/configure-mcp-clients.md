@@ -75,6 +75,18 @@ LM Studio runs models on your machine and reads MCP servers from `mcp.json` (*Pr
 
 See [Use a local model](use-a-local-model.md).
 
+## Ollama (local model)
+
+Ollama needs an MCP client in between; [ollmcp](https://github.com/jonigl/mcp-client-for-ollama) works:
+
+```bash
+uvx ollmcp mcp add --scope user comdirect -- uvx comdirect-mcp@0.4.0
+uvx ollmcp -m <model>
+```
+
+ollmcp shows no login dialog, so approve the push within the fallback window (30 s by default). Details:
+[Use a local model](use-a-local-model.md#with-ollama).
+
 ## Other clients
 
 Any MCP client that can start a stdio server works: command `uvx`, arguments `["comdirect-mcp@0.4.0"]`.
