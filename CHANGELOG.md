@@ -6,9 +6,64 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-10
+
+### Changed (breaking)
+
+- A `.env` file in the working directory is no longer read. Point `COMDIRECT_ENV_FILE` to a dotenv file if you
+  need one; the OS keychain is recommended.
+- Tool results are compact views: null fields are left out and details are behind `verbose: true`.
+  `list_transactions` returns date, amount, direction, counterparty, purpose and type; references only verbose.
+  `get_depot_positions` returns compact positions; `verbose=true` restores ids, purchase values and detailed
+  profit/loss. All data tools use compact views, including depots and documents.
+
 ### Added
 
+- `summarize_transactions`: income, expenses, net and count per month, counterparty or type, computed on the
+  server, for cash flow questions without loading every transaction into the model's context.
+- `list_cards`: card balances (e.g. Visa) from comdirect's balance report. The API has no card transactions.
+- `list_depot_transactions`, `get_wealth_overview` and `get_instrument`, with compact/verbose views, local date
+  checks and bank-supplied EUR totals. Instrument metadata optionally includes order dimensions and
+  bank-supplied underlying-price snapshots.
+- `get_account_balance`, `get_depot_position`, `summarize_portfolio` (allocation per currency, no FX
+  conversion), read-only `list_orders`, `get_order` and `get_order_dimensions`, `get_document_cover` and
+  isolated, bounded PDF text extraction (`extract_document_text`). Twenty-one tools in total.
+- Continuation for filtered transactions (`offset`, `next_offset`) and documents (`has_more`, `next_index`).
+  Order lists follow bank pages and enforce filters locally; partial position lists cannot be aggregated.
+- Transactions have a resolved `counterparty` and a `direction`; comdirect's SEPA roles (remitter for direct
+  debits, creditor for transfers) no longer need interpreting.
+- Accounts have `type`/`type_name` (e.g. Girokonto, Tagesgeld PLUS), account number, IBAN and credit limit.
+- `COMDIRECT_MCP_MASK_NAMES`: optional pseudonyms for counterparty names.
+- `scripts/live_stdio_check.py`: real-process review of all MCP tools, filters and aggregate consistency;
+  offline startup checks in both modes, one live login and optional token-expiry continuity check.
+- Offline subprocess tests exercise all twenty-one tools over stdio in both protocol modes, with fake banking
+  transport and authentication.
 - Documentation: using the server with Ollama through the ollmcp client (no login dialog, fallback window).
+
+### Changed
+
+- `purpose` is cleaned up: SEPA line numbers removed, words split at the 35-character line boundary joined again,
+  trailing reference block removed. `Transaction.purpose_raw` keeps the original.
+- `quantity_unit` resolves comdirect's special units (`XXX` → `pieces`, ...).
+- Own account numbers, IBANs and depot display numbers are masked like counterparty IBANs.
+- Missing API amounts, currencies, identifiers and flags remain unknown instead of causing mapping/schema errors
+  or becoming invented defaults. Summaries reject missing amounts/currencies and validate the date range.
+- Authentication errors omit response bodies and arbitrary upstream descriptions.
+- Regenerated the vendor client with the current generator after removing invented Boolean defaults.
+- API coverage reference records missing read endpoints and intentionally excluded writes.
+- Live checks suppress error details, return failure on login errors and download only already-read PDFs.
+
+### Fixed
+
+- Repeated `login` on an active session is rejected before sending another push TAN or replacing its tokens.
+- Transaction direction filters translate MCP values to the banking API's `CREDIT`/`DEBIT` values.
+- Booking-date filters are enforced locally because the account API ignores them; summaries use the same
+  filtered transactions. Reversed ranges and date filters on pending transactions are rejected.
+- Depot movements follow bank pages using raw offsets instead of rejecting an initial partial response;
+  stalled/empty pages and changing match counts still fail explicitly.
+- Single depot-position reads accept direct object responses as well as the specification's envelope;
+  order-dimension lookups route ISIN/WKN/UUID identifiers to their correct filters.
+- An unnamed counterparty with an IBAN/BIC is retained for verbose output; whitespace-only names are omitted.
 
 ## [0.4.0] - 2026-10-10
 
@@ -92,7 +147,8 @@ Compared against comdirect's PDF documentation (*REST API – Schnittstellenspez
 
 - Initial release: OAuth + 2FA login, accounts, transactions, depots.
 
-[Unreleased]: https://github.com/mad4ms/comdirect-mcp/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/mad4ms/comdirect-mcp/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/mad4ms/comdirect-mcp/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/mad4ms/comdirect-mcp/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/mad4ms/comdirect-mcp/compare/v0.3...v0.3.1
 [0.3]: https://github.com/mad4ms/comdirect-mcp/compare/v0.2...v0.3

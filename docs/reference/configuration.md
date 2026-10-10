@@ -11,7 +11,7 @@
 | `comdirect-mcp --version` | Prints the version |
 | `python -m comdirect_mcp [...]` | Same as `comdirect-mcp [...]` |
 
-Run without installing: `uvx comdirect-mcp@0.4.0 [...]`.
+Run without installing: `uvx comdirect-mcp@0.5.0 [...]`.
 
 ## Credentials
 
@@ -23,7 +23,7 @@ Run without installing: `uvx comdirect-mcp@0.4.0 [...]`.
 | `COMDIRECT_PASSWORD` | PIN |
 
 Lookup order per value: environment variable → OS keychain (service `comdirect-mcp`, entry = variable name) →
-`.env` in the working directory. Details: [Manage credentials](../how-to/manage-credentials.md).
+dotenv file named by `COMDIRECT_ENV_FILE` (opt-in). Details: [Manage credentials](../how-to/manage-credentials.md).
 
 ## Server options
 
@@ -32,7 +32,9 @@ Environment variables, read when the server starts:
 | Variable | Default | Description |
 | --- | --- | --- |
 | `COMDIRECT_MCP_PUSH_TAN_WAIT` | `30` | Seconds to wait for the push TAN approval when the client cannot show a confirmation dialog |
-| `COMDIRECT_MCP_UNMASK_IBANS` | unset | `true`, `1` or `yes` returns counterparty IBANs unmasked; otherwise they are masked (`DE**...3000`) |
+| `COMDIRECT_MCP_UNMASK_IBANS` | unset | `true`, `1` or `yes` returns IBANs and account numbers unmasked; otherwise they are masked (`DE**...3000`, `...7890`) |
+| `COMDIRECT_MCP_MASK_NAMES` | unset | `true`, `1` or `yes` replaces counterparty names with pseudonyms (`Counterparty 3f9a1c`), stable within one server run; payment texts may still contain names |
+| `COMDIRECT_ENV_FILE` | unset | Path to a dotenv file with the credentials (opt-in) |
 | `COMDIRECT_MCP_MAX_DOCUMENT_BYTES` | `10485760` | Size limit for `download_document` in bytes |
 
 ## Protocol

@@ -60,6 +60,11 @@ class TestComdirectClient(unittest.TestCase):
         mock_balance.balance.unit = "EUR"
         mock_balance.balance.value = "100.50"
         mock_balance.available_cash_amount.value = "50.00"
+        mock_balance.account.account_type.key = "CA"
+        mock_balance.account.account_type.text = "Girokonto"
+        mock_balance.account.account_display_id = "1234567890"
+        mock_balance.account.iban = "DE89370400440532013000"
+        mock_balance.account.credit_limit = {"value": "1000.00", "unit": "EUR"}
 
         mock_response = MagicMock()
         mock_response.values = [mock_balance]
@@ -71,6 +76,8 @@ class TestComdirectClient(unittest.TestCase):
         self.assertIsInstance(accounts[0], Account)
         self.assertEqual(accounts[0].id, "acc_1")
         self.assertEqual(accounts[0].balance, Decimal("100.50"))
+        self.assertEqual(accounts[0].type_name, "Girokonto")
+        self.assertEqual(accounts[0].credit_limit, Decimal("1000.00"))
 
         self.client._banking.banking_v2_get_account_balances.assert_called_with(user="user")
 
@@ -286,3 +293,21 @@ class TestComdirectApiClient(unittest.TestCase):
             self.assertIn("sess_123", headers["x-http-request-info"])
 
             self.assertEqual(headers["Content-Type"], "application/json")
+
+
+def test_local_date_filter_continues_paging_past_nonmatching_page():
+    from types import SimpleNamespace
+
+    from comdirect_mcp._openapi.models.account_transaction import AccountTransaction
+
+    client = ComdirectClient({"client_id": "c", "client_secret": "s", "username": "u", "password": "p"})
+    pages = [
+        SimpleNamespace(values=[AccountTransaction(booking_date="2026-10-09")]),
+        SimpleNamespace(values=[AccountTransaction(booking_date="2026-10-08")]),
+        SimpleNamespace(values=[]),
+    ]
+    with patch.object(client, "_get_account_transactions_page", side_effect=pages) as transport:
+        transactions = client.list_transactions("synthetic", max_booking_date="2026-10-08")
+    assert len(transactions) == 1
+    assert transactions[0].booking_date.isoformat() == "2026-10-08"
+    assert [call.kwargs["paging_first"] for call in transport.call_args_list] == [0, 1, 2]

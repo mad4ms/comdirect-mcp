@@ -85,5 +85,11 @@ if "Document" in definitions:
         doc_props["name"]["maxLength"] = 255
         print("✔ Patched Document.name.maxLength -> 255")
 
+# Missing fields are unknown, not false; the PDF declares no field required.
+for name in ("AccountTransaction", "Document", "DocumentMetadata"):
+    for prop in definitions.get(name, {}).get("properties", {}).values():
+        if prop.get("type") == "boolean":
+            prop.pop("default", None)
+
 SPEC_PATH.write_text(json.dumps(data, indent=2))
 print("✔ OpenAPI spec patched successfully")

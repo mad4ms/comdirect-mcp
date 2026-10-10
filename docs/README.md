@@ -28,6 +28,8 @@ Working on the project:
 
 - [Tools](reference/tools.md): arguments, results and annotations of every MCP tool
 - [Configuration](reference/configuration.md): commands, credentials, environment variables, protocol
+- [MCP tool review](reference/mcp-review.md): per-tool findings, validation boundaries and next priorities
+- [API coverage](reference/api-coverage.md): mapping to the comdirect specification and remaining gaps
 - [Python API](reference/python-api.md): `ComdirectClient`, models, exceptions
 
 ## Explanation

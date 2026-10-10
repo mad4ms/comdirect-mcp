@@ -82,8 +82,8 @@ class Authenticator:
             session_id = self._create_session(token)
             return self._request_challenge(token, session_id, tan_type)
         except requests.RequestException as e:
-            logger.error(f"Network error during authentication: {e}")
-            raise AuthenticationError(f"Network error: {str(e)}") from e
+            logger.error("Network error during authentication (%s)", type(e).__name__)
+            raise AuthenticationError("Network error contacting comdirect. Check connectivity.") from e
 
     def complete(self, challenge: TanChallenge, tan: str) -> tuple[str, dict[str, Any]]:
         """
@@ -96,8 +96,8 @@ class Authenticator:
             self._confirm_challenge(challenge, tan)
             secondary_token = self._secondary_token(challenge.primary_token)
         except requests.RequestException as e:
-            logger.error(f"Network error during authentication: {e}")
-            raise AuthenticationError(f"Network error: {str(e)}") from e
+            logger.error("Network error during authentication (%s)", type(e).__name__)
+            raise AuthenticationError("Network error contacting comdirect. Check connectivity.") from e
 
         logger.info("Authentication successful")
         return challenge.session_id, secondary_token
@@ -120,7 +120,7 @@ class Authenticator:
                 },
             )
         except requests.RequestException as e:
-            raise AuthenticationError(f"Network error: {str(e)}") from e
+            raise AuthenticationError("Network error contacting comdirect. Check connectivity.") from e
         self._handle_error(response, "Token refresh failed")
         return response.json()
 
@@ -141,7 +141,7 @@ class Authenticator:
                 },
             )
         except requests.RequestException as e:
-            raise AuthenticationError(f"Network error: {str(e)}") from e
+            raise AuthenticationError("Network error contacting comdirect. Check connectivity.") from e
         self._handle_error(response, "Token revocation failed", expected_codes=[204])
         logger.info("Tokens revoked at comdirect (HTTP %s)", response.status_code)
 
@@ -181,7 +181,7 @@ class Authenticator:
         try:
             return response.json()[0]["identifier"]
         except (IndexError, KeyError, json.JSONDecodeError) as e:
-            raise AuthenticationError(f"Invalid session response format: {response.text}") from e
+            raise AuthenticationError("Invalid session response format from comdirect.") from e
 
     def _session_headers(self, token: str, session_id: str) -> dict[str, str]:
         headers = self._get_base_headers(token)
@@ -288,8 +288,8 @@ class Authenticator:
         except TanError:
             raise
         except Exception as e:
-            logger.error(f"Error in TAN callback: {e}")
-            raise TanError(f"TAN callback failed: {str(e)}") from e
+            logger.error("TAN callback failed (%s)", type(e).__name__)
+            raise TanError("TAN callback failed. Check the configured TAN handler.") from e
 
     def _handle_error(
         self,
@@ -301,19 +301,27 @@ class Authenticator:
             expected_codes = [200]
 
         if response.status_code not in expected_codes:
-            error_details = response.text
+            code = None
             try:
-                # Try to parse nice error JSON if available
-                details_json = response.json()
-                if "error_description" in details_json:
-                    error_details = details_json["error_description"]
-                elif "error" in details_json:
-                    error_details = details_json.get("error")
+                details = response.json()
+                candidate = details.get("error") if isinstance(details, dict) else None
+                if candidate in (
+                    "invalid_request",
+                    "invalid_client",
+                    "invalid_grant",
+                    "unauthorized_client",
+                    "unsupported_grant_type",
+                    "invalid_scope",
+                    "invalid_token",
+                    "insufficient_scope",
+                ):
+                    code = candidate
             except ValueError:
                 pass
-
-            logger.error(f"{msg}: HTTP {response.status_code} - {error_details}")
-            raise AuthenticationError(f"{msg} (HTTP {response.status_code}): {error_details}")
+            suffix = f" ({code})" if code else ""
+            message = f"{msg} (HTTP {response.status_code}){suffix}"
+            logger.error("%s", message)
+            raise AuthenticationError(message)
 
     @staticmethod
     def _get_base_headers(token: str) -> dict[str, str]:

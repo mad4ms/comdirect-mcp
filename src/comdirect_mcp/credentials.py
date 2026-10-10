@@ -5,16 +5,18 @@ Each credential is taken from the first source that has it:
 
 1. environment variable (e.g. set by the MCP client config)
 2. OS keychain (macOS Keychain, Windows Credential Manager, Secret Service), see `comdirect-mcp configure`
-3. `.env` file in the working directory
+3. the dotenv file named by COMDIRECT_ENV_FILE (opt-in; no file is read implicitly, because the working
+   directory of a server started by an MCP client is arbitrary)
 """
 
 import os
 
 import keyring
-from dotenv import dotenv_values, find_dotenv
+from dotenv import dotenv_values
 from keyring.errors import KeyringError
 
 KEYRING_SERVICE = "comdirect-mcp"
+ENV_FILE_VARIABLE = "COMDIRECT_ENV_FILE"
 
 # ComdirectClient credential key -> environment variable / keychain entry name
 CREDENTIAL_VARS = {
@@ -49,7 +51,7 @@ def load_credentials() -> dict[str, str]:
         value = os.environ.get(name) or keyring_get(name)
         if not value:
             if dotenv is None:
-                path = find_dotenv(usecwd=True)
+                path = os.environ.get(ENV_FILE_VARIABLE)
                 dotenv = dotenv_values(path) if path else {}
             value = dotenv.get(name)
         if value:

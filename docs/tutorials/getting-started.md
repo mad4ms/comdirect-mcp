@@ -36,7 +36,7 @@ More details: [Get comdirect API access](../how-to/get-comdirect-api-access.md).
 ## 2. Store your credentials in the keychain
 
 ```bash
-uvx comdirect-mcp@0.4.0 configure
+uvx comdirect-mcp@0.5.0 configure
 ```
 
 Enter the Client ID, Client Secret, Zugangsnummer and PIN. Secret values are not shown while you type. They are
@@ -54,7 +54,7 @@ The client only needs to know how to start the server; no credentials go into it
   "mcpServers": {
     "comdirect": {
       "command": "uvx",
-      "args": ["comdirect-mcp@0.4.0"]
+      "args": ["comdirect-mcp@0.5.0"]
     }
   }
 }

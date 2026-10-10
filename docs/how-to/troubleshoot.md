@@ -7,7 +7,7 @@ Code via `/mcp`, VS Code in the *Output* panel (*MCP: List Servers → Show Outp
 
 | Message | Cause | Fix |
 | --- | --- | --- |
-| `Missing credentials: ...` | The listed values are neither in the environment, the keychain nor `.env` | `comdirect-mcp configure`, see [Manage credentials](manage-credentials.md) |
+| `Missing credentials: ...` | The listed values are neither in the environment, the keychain nor the file named by `COMDIRECT_ENV_FILE` (a `.env` in the working directory is not read) | `comdirect-mcp configure`, see [Manage credentials](manage-credentials.md) |
 | `Primary OAuth failed (HTTP 401)` | Wrong Client ID/Secret, Zugangsnummer or PIN | Check the values; do not retry blindly, repeated failures can lock the access |
 | `comdirect offered TAN method M_TAN/P_TAN instead of photoTAN push` | photoTAN Push is not activated, or comdirect ignored the requested method | Activate photoTAN Push and set it as default in the online banking |
 | `... TAN challenges were started without a confirmed TAN ...` | Protection against the lock after 5 unconfirmed challenges | Log in once on comdirect.de with a TAN, then restart the MCP server (restart your client) |

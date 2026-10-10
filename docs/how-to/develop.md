@@ -10,7 +10,7 @@ git clone https://github.com/mad4ms/comdirect-mcp.git
 cd comdirect-mcp
 uv sync --all-extras        # creates .venv with the package (editable), dev tools and extras
 uv run pre-commit install   # see below
-cp .env.example .env        # only needed for examples and the live check
+# Configure credentials via the keychain, environment or explicit COMDIRECT_ENV_FILE.
 ```
 
 ## Project layout
@@ -18,9 +18,8 @@ cp .env.example .env        # only needed for examples and the live check
 ```text
 src/comdirect_mcp/
 ├── cli.py             # `comdirect-mcp` command: serve (default), configure
-├── cli.py             # `comdirect-mcp` command: serve (default), configure
 ├── server.py          # MCP server (MCPServer, tools, login via elicitation)
-├── credentials.py     # credential lookup: environment, OS keychain, .env
+├── views.py           # compact agent-facing views, masking, aggregation
 ├── credentials.py     # credential lookup: environment, OS keychain, .env
 ├── client.py          # ComdirectClient: API calls, token refresh
 ├── auth.py            # OAuth + session + 2FA flow (start/complete/refresh)
@@ -53,6 +52,8 @@ The test suite has three layers:
   response shapes, catching incompatibilities of the generated code with pydantic/urllib3 upgrades
 - `test_mcp_server.py`: the MCP server through the SDK's in-memory client, with both the 2026-07-28 protocol
   (multi round-trip requests) and the legacy protocol; validates every structured result against its output schema
+- `test_stdio_server.py`: all twenty-one tools over actual subprocess pipes in both protocol modes, with synthetic
+  credentials/authentication and the fake bank transport; no network
 - `test_credentials.py`: credential precedence and `comdirect-mcp configure` (in-memory keychain, see `conftest.py`)
 - `test_packaging.py`: `pyproject.toml`, `server.json` and README stay consistent
 
@@ -74,9 +75,40 @@ Mocks only prove what we assumed about the API. Before a release, run the live c
 uv run python scripts/live_check.py      # waits 20 s for the push approval; pass another number to change it
 ```
 
-It logs in (one push TAN, no retry), calls every tool through an in-process MCP client, forces a token refresh
+It uses the same credential lookup as the server (keychain or environment recommended; dotenv requires
+`COMDIRECT_ENV_FILE`). It logs in (one push TAN, no retry), calls the tools through an in-process MCP client,
+forces a token refresh
 and logs out. It prints structure only - counts, which fields are set, format checks - never amounts, ids,
-names, IBANs or payment texts, and writes nothing to disk.
+names, IBANs or payment texts, and writes nothing to disk. Error details are suppressed. Document download is
+checked only when an already-read PDF is on the first page, so the check does not mark an unread document as read.
+A failed check exits with a nonzero status.
+
+### Review the real stdio process
+
+```bash
+uv run python scripts/live_stdio_check.py --offline     # both protocols; no login or bank access
+uv run python scripts/live_stdio_check.py               # one live login; all tools, filters and consistency
+uv run python scripts/live_stdio_check.py --depot-only   # targeted depot movement check
+uv run python scripts/live_stdio_check.py --remaining-only  # single reads, order metadata, portfolio and text
+```
+
+This starts the installed local `comdirect-mcp` executable as a separate process and uses only MCP calls, with
+no access to server internals. The live run covers all available accounts/depots, compact and verbose
+transactions, date/direction filters, all summary groupings, wealth products/aggregates, depot movements,
+compact/verbose metadata for every identifiable holding, document paging, an already-read PDF and invalid
+arguments. It masks names and account numbers, suppresses stderr/details, and persists no financial data.
+The expanded check also covers single account/position reads, order books and dimensions, portfolio consistency,
+plain cover text and bounded PDF text. An empty order book cannot verify a successful individual-order lookup;
+that is reported as skipped, with only the missing-id error tested. Cover-page HTTP 500 remains a failed check,
+even when another document's cover works. No response content is persisted.
+Use `--server-command /path/to/comdirect-mcp --offline` to check an isolated wheel installation without login.
+Unexpected tool errors emit only allowlisted diagnostic categories or HTTP statuses; error bodies are never printed.
+It keeps the session open for 620 seconds before another data call, then logs out and checks that further data
+access requires login. This checks session continuity beyond the documented access-token lifetime; it does
+not inspect token values or verify server-side revocation directly. Use `--refresh-wait 0` to skip the expiry
+wait. Live approval is manual by default: approve the current photoTAN request, then enter `approved` in
+the checker terminal, or enter `cancel` to decline. The client allows up to 300 seconds for this interaction.
+For an explicitly timed check use `--no-manual-approval --wait 60`. There is no login retry.
 
 ## Running the server locally
 

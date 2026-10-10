@@ -10,6 +10,7 @@ Python client for the comdirect banking REST API. Python 3.12+, managed with uv.
 ```text
 src/comdirect_mcp/cli.py        `comdirect-mcp` command: serve (default), configure (OS keychain)
 src/comdirect_mcp/server.py     MCP tools, login via elicitation (Resolve/Elicit -> input_required)
+src/comdirect_mcp/views.py      compact agent-facing views, masking, summarize_transactions aggregation
 src/comdirect_mcp/credentials.py  credential lookup: environment -> OS keychain -> .env
 src/comdirect_mcp/client.py     ComdirectClient: API calls, token refresh (thread-safe)
 src/comdirect_mcp/auth.py       OAuth + session + 2FA (start/complete/refresh)
@@ -61,6 +62,9 @@ Run all four before you report a change as done. Use `uv add` / `uv lock` for de
 - The comdirect spec declares **no field as required**. Mappers must handle every field being absent; use
   `X | None` in domain models rather than inventing defaults (no `0`, no `1970-01-01`).
 - Domain models are frozen dataclasses with `Decimal` amounts and `date` dates. Never expose generated models.
+- MCP tools return views from `views.py`, not domain models: compact (optional fields via `optional()` are left
+  out when null), details behind `verbose`, aggregation on the server. Keep results small - they fill the model's
+  context.
 - MCP tools: return pydantic models (structured output), raise `ToolError` with an actionable message
   (e.g. "call `login`"), set `ToolAnnotations`. Tool output must validate against its output schema - a
   `None` in a non-optional field makes the client reject the whole result.

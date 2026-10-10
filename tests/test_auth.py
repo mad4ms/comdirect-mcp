@@ -154,3 +154,17 @@ class TestAuthenticator(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_authentication_errors_do_not_expose_upstream_data(caplog):
+    auth = Authenticator("user", "pwd", "cid", "secret")
+    response = _response(
+        status=400, json_data={"error": "invalid_grant", "error_description": "private upstream data"}
+    )
+    import pytest
+
+    with pytest.raises(AuthenticationError) as error:
+        auth._handle_error(response, "Primary OAuth failed")
+    assert "invalid_grant" in str(error.value)
+    assert "private upstream data" not in str(error.value)
+    assert "private upstream data" not in caplog.text

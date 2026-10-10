@@ -36,7 +36,8 @@ The script
 3. generates a client with the `python` generator (Pydantic v2),
 4. replaces `src/comdirect_mcp/_openapi` with the result,
 5. rewrites the generator's absolute `openapi_client` imports to `comdirect_mcp._openapi`, so the client cannot
-   clash with other generated clients installed in the same environment.
+   clash with other generated clients installed in the same environment,
+6. formats the generated Python with Ruff, using fixed settings to avoid generator whitespace churn.
 
 The downloaded spec and the raw generator output stay in `tmp/` (git-ignored) for inspection.
 
@@ -45,7 +46,8 @@ The downloaded spec and the raw generator output stay in `tmp/` (git-ignored) fo
 The comdirect specification declares several primitive values as objects (e.g. `CurrencyString`, `DateString`
 are plain strings like `"EUR"` and `"2024-01-31"` in real responses) and has constraints the API does not keep
 (e.g. document names longer than 50 characters). These are fixed in the spec **before** generation; runtime
-monkey-patching is intentionally avoided.
+monkey-patching is intentionally avoided. Boolean defaults on transactions and document metadata are removed
+so omitted flags remain unknown rather than being converted to `false`.
 
 If a Pydantic `ValidationError` from a generated model shows up at runtime:
 

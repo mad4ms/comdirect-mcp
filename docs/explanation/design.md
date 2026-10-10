@@ -13,6 +13,7 @@ comdirect marks an unread document as read when it is downloaded.
 
 ```text
 server.py      MCP tools: argument validation, structured results, errors for the model
+views.py       compact agent-facing views, masking, aggregation
 client.py      ComdirectClient: API calls, paging, token refresh
 auth.py        OAuth + session + 2FA flow
 domain/        own frozen dataclasses + mappers
@@ -40,6 +41,15 @@ transaction date filters and paging the client uses are not in the PDF but work.
 - MCP output schemas reflect this; a `None` in a non-optional field would make clients reject the whole result.
 - Mocked tests can only confirm what we assumed. `scripts/live_check.py` verifies every tool against the real API
   before a release, printing structure only.
+
+## Tools designed for the agent, not mirroring the API
+
+Every tool result lands in the model's context. The API's transaction object has around twenty fields, most of them
+empty or irrelevant for a question like "what did I spend last month". The tools therefore return views
+(`views.py`) instead of the domain models: null fields are left out, references are only returned with `verbose`,
+the SEPA role juggling (`remitter`/`creditor`) is resolved into one `counterparty`, payment texts are cleaned up,
+and `summarize_transactions` aggregates on the server. Less data in the context means fewer tokens, fewer
+mistakes and less personal data at the model provider.
 
 ## Money as decimal strings
 

@@ -17,6 +17,7 @@ DEST_DIR="$ROOT/src/comdirect_mcp/_openapi"
 # ------------------------------------------------------------------------------
 command -v curl >/dev/null || { echo "curl missing"; exit 1; }
 command -v openapi-generator-cli >/dev/null || { echo "openapi-generator-cli missing"; exit 1; }
+command -v ruff >/dev/null || { echo "ruff missing"; exit 1; }
 command -v python >/dev/null || { echo "python missing"; exit 1; }
 
 mkdir -p "$ROOT/tmp"
@@ -70,6 +71,8 @@ PY
 # ------------------------------------------------------------------------------
 # Cleanup
 # ------------------------------------------------------------------------------
+ruff format --isolated --line-length 119 --target-version py312 "$DEST_DIR"
+
 # Generator output and the downloaded spec stay in tmp/ (git-ignored) for inspection.
 
 echo "✔ Client successfully updated at:"
