@@ -19,6 +19,11 @@ def test_server_json_matches_project_version():
         assert package["version"] == PROJECT["version"]
 
 
+def test_server_json_description_fits_registry_limit():
+    # The MCP Registry rejects descriptions longer than 100 characters (HTTP 422 on publish).
+    assert len(SERVER_JSON["description"]) <= 100
+
+
 def test_server_json_points_to_this_pypi_package():
     (package,) = SERVER_JSON["packages"]
     assert package["registryType"] == "pypi"

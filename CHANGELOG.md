@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-10
+
+### Fixed
+
+- MCP Registry metadata: the `server.json` description fits the registry's 100-character limit, so the release
+  is listed in the MCP Registry again (0.5.0 was published to PyPI only).
+
 ## [0.5.0] - 2026-10-10
 
 ### Changed (breaking)
@@ -147,7 +154,8 @@ Compared against comdirect's PDF documentation (*REST API – Schnittstellenspez
 
 - Initial release: OAuth + 2FA login, accounts, transactions, depots.
 
-[Unreleased]: https://github.com/mad4ms/comdirect-mcp/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/mad4ms/comdirect-mcp/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/mad4ms/comdirect-mcp/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/mad4ms/comdirect-mcp/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/mad4ms/comdirect-mcp/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/mad4ms/comdirect-mcp/compare/v0.3...v0.3.1
