@@ -2,8 +2,8 @@
 
 <!-- mcp-name: io.github.mad4ms/comdirect-mcp -->
 
-[![PyPI](https://img.shields.io/pypi/v/comdirect-mcp.svg)](https://pypi.org/project/comdirect-mcp/)
-[![Python](https://img.shields.io/pypi/pyversions/comdirect-mcp.svg)](https://pypi.org/project/comdirect-mcp/)
+[![PyPI](https://img.shields.io/pypi/v/comdirect-mcp?cacheSeconds=3600)](https://pypi.org/project/comdirect-mcp/)
+[![Python](https://img.shields.io/pypi/pyversions/comdirect-mcp?cacheSeconds=3600)](https://pypi.org/project/comdirect-mcp/)
 [![Tests](https://github.com/mad4ms/comdirect-mcp/actions/workflows/tests.yml/badge.svg)](https://github.com/mad4ms/comdirect-mcp/actions/workflows/tests.yml)
 [![MCP](https://img.shields.io/badge/MCP-2026--07--28-blue)](https://modelcontextprotocol.io/specification/2026-07-28)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -18,26 +18,25 @@ postbox documents. The login is confirmed with your photoTAN app, and there is n
 > This is an unofficial project, not affiliated with comdirect. It handles your banking credentials and sends
 > your financial data to the AI model you connect it to. Read the warning below and [SECURITY.md](SECURITY.md).
 
-## Warnung (in Deutsch weil Comdirect)
+## Warnung (auf Deutsch, weil comdirect)
 
-Leute es geht hier um euer Geld. Nutzt diese Bibliothek nur, wenn ihr den Code versteht und euch den Risiken bewusst seid.
+Leute, hier geht es um euer Geld. Nutzt diese Bibliothek nur, wenn ihr den Code versteht und die Risiken kennt.
 
-Ich bin auch nicht perfekt, aber übernehme keine Haftung für Schäden, die durch die Nutzung dieser Software entstehen. Falls Euch was auffällt, gern PRs oder Issues.
+Ich bin nicht perfekt. Die Software steht unter der [MIT-Lizenz](LICENSE): Jeder darf damit machen, was er/sie will (auch ihr, comdirect 👀), aber ohne jede Gewährleistung. Ich übernehme keine Haftung für Schäden durch ihre Nutzung. Wenn euch etwas auffällt: PRs und Issues sind willkommen.
 
-Die API und damit das Repo hier nutzen aktuell nur lesende Endpunkte, aber Fehler können immer passieren. Comdirect kann die API ändern, Dependencies können im Zweifel auch Mist bauen ([Supply-Chain Attacks](https://docs.github.com/de/code-security/concepts/supply-chain-security/about-supply-chain-security)) und 2FA hilft zwar, ist aber kein Freifahrtschein.
+Das Repo nutzt aktuell nur lesende Endpunkte der API, aber Fehler passieren trotzdem. comdirect kann die API jederzeit ändern, Dependencies können kompromittiert werden ([Supply-Chain-Angriffe](https://docs.github.com/de/code-security/concepts/supply-chain-security/about-supply-chain-security)), und 2FA hilft zwar, ist aber nun wirklich kein Freifahrtschein.
 
-Bitte:
-- Nutzt das nur lokal auf eurem eigenen Rechner.
-- Teilt eure Zugangsdaten mit niemandem.
-- Packt Secrets in `.env` und committet die Datei nie.
-- Nutzt die [Pre-Commit Hooks](docs/how-to/develop.md#pre-commit-hooks) um Secrets zu scannen. Gute Zeit bissel Devops-Kram zu lernen.
-- Spielt Updates nicht blind ein (Lockfile/Pinning hilft) und schaut bei Änderungen kurz drüber.
+Deshalb bitte:
 
-**MCP-Server**: Wenn ihr den Server an einen nicht-lokalen AI-Client hängt, **gehen deine Daten raus**. Je nach Client/Setup können Kontodaten/Transaktionen in Logs/Telemetry landen oder durch Prompt-Injection aus Dokumenten/Verwendungszwecken in komische Richtungen gehen ([MCP Horror Stories: The GitHub Prompt Injection Data Heist](https://www.docker.com/blog/mcp-horror-stories-github-prompt-injection/)). Nutzt MCP nur, wenn ihr der Umgebung wirklich vertraut, und gebt nur die Daten frei, die ihr dafür braucht.
+- Nutzt das Ganze nur lokal auf eurem eigenen Rechner.
+- Gebt eure Zugangsdaten niemandem weiter.
+- Legt eure Zugangsdaten im OS-Schlüsselbund ab (`comdirect-mcp configure`). Falls ihr doch eine `.env` nutzt: Dort steht der PIN im Klartext, also committet sie niemals.
+- Nutzt bei Forks die [Pre-Commit-Hooks](docs/how-to/develop.md#pre-commit-hooks), um nach Secrets zu scannen. Gute Gelegenheit, ein bisschen DevOps zu lernen.
+- Spielt Updates nicht blind ein (Lockfile und Pinning helfen) und schaut euch Änderungen kurz an.
 
-Da der gemeine r/finanzen User eh schon seine Kontoauszüge in ChatGPT kopiert, könnt ihr damit machen, was ihr wollt, **auf eure eigene Verantwortung**!
+**MCP-Server**: Sobald ihr den Server an einen AI-Client hängt, der nicht lokal läuft, **verlassen eure Daten euren Rechner**. Je nach Client und Setup können Kontodaten und Umsätze in Logs/Telemetrie im Ausland landen. Außerdem können Dokumente oder Verwendungszwecke Prompt-Injections enthalten, die das Modell in komische Richtungen lenken ([MCP Horror Stories: The GitHub Prompt Injection Data Heist](https://www.docker.com/blog/mcp-horror-stories-github-prompt-injection/)). Nutzt deshalb den MCP nur in Umgebungen, denen ihr wirklich vertraut, und gebt nur die Daten frei, die ihr tatsächlich braucht.
 
-Idealerweise ohne unnötige personenbezogene Daten. (Hauptsache, ihr lasst 'nen Stern da.)
+Da der gemeine r/finanzen - User seine Kontoauszüge eh schon in ChatGPT kopiert: Macht damit, was ihr wollt, aber **auf eigene Verantwortung**! Am besten ohne unnötige personenbezogene Daten. Endlich könnt ihr eurem Date per Claude erstelltes Chart vorrechnen, was der erste Beziehungsmonat gegenüber dem letzten Singlemonat gekostet hat. ([Kontext](https://www.reddit.com/r/Finanzen/comments/imznol/neue_freundin_und_umfeld_durchkreuzen_meine/)). (Hauptsache, ihr lasst 'nen Stern da.)
 
 ## Privacy: prefer a local model
 
