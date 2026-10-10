@@ -29,6 +29,37 @@ is between `comdirect-mcp` and comdirect. Why this matters: [Privacy and securit
 
 LM Studio asks for confirmation before each tool call; you can allow the read-only comdirect tools permanently.
 
+## With Ollama
+
+Ollama has no built-in MCP client, so you connect the two with
+[ollmcp](https://github.com/jonigl/mcp-client-for-ollama) (*MCP Client for Ollama*), a terminal chat client.
+
+1. Install [Ollama](https://ollama.com) and pull a model that supports tools. `ollama show <model>` lists `tools`
+   under *Capabilities* if it does. Prefer larger models; very small ones (around 4B parameters) call tools
+   unreliably.
+2. Store your credentials in the keychain: `uvx comdirect-mcp@0.4.0 configure`.
+3. Register the server once for all projects (no secrets in ollmcp's config):
+
+   ```bash
+   uvx ollmcp mcp add --scope user comdirect -- uvx comdirect-mcp@0.4.0
+   ```
+
+4. Start a chat with your model:
+
+   ```bash
+   uvx ollmcp -m <model>
+   ```
+
+5. Ask it to log in to comdirect. ollmcp asks you to approve the `login` tool call; then the push arrives on
+   your phone.
+
+ollmcp has no elicitation dialog. The server therefore uses its fallback window: approve the push in the app
+within 30 seconds; the server waits the full window and then confirms. For more time, register the server with
+`-e COMDIRECT_MCP_PUSH_TAN_WAIT=60` before the `comdirect` name.
+
+ollmcp can also use Ollama Cloud models. Use only local models (no `-cloud` suffix) if your data should stay on
+your machine. Server logs are written to `~/.config/ollmcp/logs/`.
+
 ## With other local setups
 
 Any MCP client that talks to a local model works the same way: register `uvx comdirect-mcp@0.4.0` as a stdio

@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Documentation: using the server with Ollama through the ollmcp client (no login dialog, fallback window).
+
 ## [0.4.0] - 2026-10-10
 
 The project is now published as **`comdirect-mcp`** (previously `comdirect-api-wrapper`) and

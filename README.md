@@ -46,7 +46,8 @@ With cloud assistants (Claude, GitHub Copilot, ChatGPT, ...) your balances, tran
 computer and are processed under that provider's data policy.
 
 - **Most private:** use an MCP client with a **local model**, e.g. [LM Studio](https://lmstudio.ai) (supports MCP
-  servers directly) or another client running a model via Ollama or llama.cpp. Then nothing leaves your machine
+  servers directly) or [Ollama](https://ollama.com) with the [ollmcp](https://github.com/jonigl/mcp-client-for-ollama)
+  client. Then nothing leaves your machine
   except the requests to comdirect. Pick a model with good tool-calling support.
 - **With a cloud assistant:** check its data retention and training settings, use an account where your data is
   not used for training, and ask only what you need.
@@ -136,6 +137,13 @@ claude mcp add --transport stdio --scope user comdirect -- uvx comdirect-mcp@0.4
     }
   }
 }
+```
+
+**Ollama** (via [ollmcp](https://github.com/jonigl/mcp-client-for-ollama))
+
+```bash
+uvx ollmcp mcp add --scope user comdirect -- uvx comdirect-mcp@0.4.0
+uvx ollmcp -m <model>
 ```
 
 Pinning the version (`@0.4.0`) means updates only happen when you decide. More clients:

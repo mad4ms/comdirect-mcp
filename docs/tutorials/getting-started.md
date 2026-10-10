@@ -18,7 +18,7 @@ You will:
 
 - a comdirect account with online banking and the **photoTAN app**
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) (it provides the `uvx` command)
-- an MCP client, for example Claude Desktop, VS Code with GitHub Copilot, or LM Studio
+- an MCP client, for example Claude Desktop, VS Code with GitHub Copilot, LM Studio, or Ollama with ollmcp
 
 ## 1. Get API access at comdirect
 
