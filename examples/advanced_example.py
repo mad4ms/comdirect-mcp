@@ -1,24 +1,32 @@
+"""
+Small analyses on top of the API: total wealth, 90-day cash flow and portfolio performance.
+
+Run from the repository root (needs the dev extras and a .env file, see .env.example):
+
+    uv sync --all-extras
+    uv run python examples/advanced_example.py
+"""
+
 import os
-import sys
+import traceback
 from collections import defaultdict
+from datetime import date, timedelta
 from decimal import Decimal
+
 from dotenv import load_dotenv
 
-# Add src to path so we can import comdirect_api simply by running this script
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", "src"))  # noqa
-
-from comdirect_api.client import ComdirectClient  # noqa
-from comdirect_api.utils import (  # noqa
+from comdirect_mcp.client import ComdirectClient
+from comdirect_mcp.utils import (
     default_photo_tan_callback,
-    default_sms_tan_callback,
     default_push_tan_callback,
+    default_sms_tan_callback,
 )
 
 
 def print_header(title):
-    print(f"\n{'-'*60}")
+    print(f"\n{'-' * 60}")
     print(f"{title}")
-    print(f"{'-'*60}")
+    print(f"{'-' * 60}")
 
 
 def analyze_wealth(client: ComdirectClient):
@@ -40,7 +48,7 @@ def analyze_wealth(client: ComdirectClient):
     print(f"Checking {len(depots)} depots...")
     for depot in depots:
         balance, _ = client.get_depot_positions(depot.id)
-        if balance.current_value_currency == "EUR":
+        if balance.current_value is not None and balance.current_value_currency == "EUR":
             total_wealth += balance.current_value
             print(f" - Depot {depot.id}: {balance.current_value:,.2f} EUR")
 
@@ -59,9 +67,7 @@ def analyze_cash_flow(client: ComdirectClient):
     main_account_id = accounts[0].id
     print(f"Analyzing main account: {main_account_id}")
 
-    # Fetch last ~90 days of transactions (approx via listing)
-    # We'll just grab everything available via the iterator helper
-    # In a real app, you might stop iteration after a certain date
+    since = date.today() - timedelta(days=90)
 
     income = Decimal(0)
     expenses = Decimal(0)
@@ -70,7 +76,8 @@ def analyze_cash_flow(client: ComdirectClient):
     count = 0
     print("Fetching and processing transactions...")
 
-    for tx in client.iter_all_transactions(main_account_id):
+    # The iterator fetches further pages on demand; the date filter is applied by the API.
+    for tx in client.iter_all_transactions(main_account_id, min_booking_date=since.isoformat()):
         # We only look at EUR
         if tx.currency != "EUR":
             continue
@@ -109,6 +116,9 @@ def analyze_portfolio(client: ComdirectClient):
         balance, positions = client.get_depot_positions(depot.id)
 
         print(f"Depot {depot.id} ({depot.display_id})")
+        if balance.current_value is None:
+            print("No valuation available.")
+            continue
         print(f"Current Value: {balance.current_value:,.2f} {balance.current_value_currency}")
 
         if balance.purchase_value:
@@ -120,7 +130,7 @@ def analyze_portfolio(client: ComdirectClient):
         # Filter positions that have performance data
         valid_pos = [p for p in positions if p.profit_loss_purchase_rel is not None]
 
-        # Sort by relative gain descending. API returns string like "12.5%", strip % and convert
+        # Sort by relative gain descending. The API returns the percentage as string, e.g. "12.5"
         def get_rel_gain(p):
             try:
                 return float(p.profit_loss_purchase_rel.replace("%", "").replace(",", "."))
@@ -131,9 +141,9 @@ def analyze_portfolio(client: ComdirectClient):
 
         for p in sorted_pos[:3]:
             gain_raw = p.profit_loss_purchase_rel
-            name = p.instrument_name or p.wkn
-            val = p.current_value
-            print(f" - {name[:30]:<30} | {gain_raw:>8} | Value: {val:>10.2f} EUR")
+            name = p.instrument_name or p.wkn or p.position_id
+            val = f"{p.current_value:>10.2f}" if p.current_value is not None else "n/a".rjust(10)
+            print(f" - {name[:30]:<30} | {gain_raw:>8} | Value: {val} {p.current_value_currency}")
 
 
 def main():
@@ -171,13 +181,10 @@ def main():
 
     except Exception as e:
         print(f"\nERROR: {e}")
-        import traceback
-
         traceback.print_exc()
     finally:
         print("\nLogging out...")
-        if client:
-            client.logout()
+        client.logout()
 
 
 if __name__ == "__main__":

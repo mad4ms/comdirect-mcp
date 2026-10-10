@@ -1,0 +1,6 @@
+# Normalize line endings to LF in the repository
+* text=auto eol=lf
+
+# Generated vendor code (see docs/openapi-client.md)
+src/comdirect_mcp/_openapi/** linguist-generated=true
+uv.lock linguist-generated=true

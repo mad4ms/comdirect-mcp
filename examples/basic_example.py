@@ -1,22 +1,28 @@
+"""
+Basic tour through the API: accounts, transactions, depots and documents.
+
+Run from the repository root (needs the dev extras and a .env file, see .env.example):
+
+    uv sync --all-extras
+    uv run python examples/basic_example.py
+"""
+
 import os
-import sys
+from datetime import date, timedelta
+
 from dotenv import load_dotenv
 
-# Add src to path so we can import comdirect_api simply by running this script
-# This allows running the example without installing the package
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", "src"))  # noqa
-
-from comdirect_api.client import ComdirectClient  # noqa
-from comdirect_api.utils import (  # noqa
+from comdirect_mcp.client import ComdirectClient
+from comdirect_mcp.utils import (
     default_photo_tan_callback,
-    default_sms_tan_callback,
     default_push_tan_callback,
+    default_sms_tan_callback,
 )
 
 
 def main():
     # Load environment variables from .env file
-    # Ensure you have created a .env file based on .env_EXAMPLE
+    # Ensure you have created a .env file based on .env.example
     load_dotenv()
 
     # Get credentials
@@ -29,7 +35,7 @@ def main():
         }
     except KeyError as e:
         print(f"Error: Missing environment variable {e}")
-        print("Please create a .env file in the root directory based on .env_EXAMPLE")
+        print("Please create a .env file in the root directory based on .env.example")
         return
 
     # Define callbacks for 2FA
@@ -55,7 +61,6 @@ def main():
     try:
         # Fetch account balances
         print("\nFetching Account Balances:")
-        # balances = client.list_account_balances() # Deprecated
         accounts = client.list_accounts()
         for account in accounts:
             print(f"- Account: {account.id}")
@@ -66,15 +71,16 @@ def main():
         if accounts:
             first_account_id = accounts[0].id
             print(f"\nFetching transactions for Account {first_account_id}:")
+            today = date.today()
             transactions = client.list_transactions(
                 first_account_id,
-                min_booking_date="2025-10-01",
-                max_booking_date="2026-02-01",
+                min_booking_date=(today - timedelta(days=30)).isoformat(),
+                max_booking_date=today.isoformat(),
             )
             if not transactions:
                 print("No transactions found.")
             else:
-                print(f"Found {len(transactions)} transactions (first 5 are shown):")
+                print(f"Found {len(transactions)} transactions in the last 30 days (first 5 are shown):")
             for tx in transactions[:5]:  # Show first 5
                 print(f"- {tx.booking_date}: {tx.amount} {tx.currency} ({tx.type}) [Ref: {tx.reference or 'N/A'}]")
                 if tx.remitter and tx.remitter.holder_name:
@@ -95,9 +101,9 @@ def main():
             balance, positions = client.get_depot_positions(depot.id)
             print(f"  Depot Value: {balance.current_value} {balance.current_value_currency}")
             for pos in positions[:5]:
-                print(
-                    f"  - WKN: {pos.wkn}, Quantity: {pos.quantity} {pos.quantity_unit}, Value: {pos.current_value} {pos.current_value_currency}"  # noqa
-                )
+                name = pos.instrument_name or pos.wkn
+                value = f"{pos.current_value} {pos.current_value_currency}"
+                print(f"  - {name} ({pos.isin}): {pos.quantity} {pos.quantity_unit}, {value}")
 
         # Fetch Documents
         print("\nFetching Documents:")

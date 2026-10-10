@@ -1,9 +1,11 @@
 import unittest
-from unittest.mock import MagicMock, patch
 from decimal import Decimal
+from unittest.mock import MagicMock, patch
 
-from comdirect_api.client import ComdirectClient, ComdirectApiClient
-from comdirect_api.domain.models import Account
+from comdirect_mcp.auth import TanChallenge
+from comdirect_mcp.client import ComdirectApiClient, ComdirectClient
+from comdirect_mcp.domain.models import Account
+from comdirect_mcp.exceptions import AuthenticationError
 
 
 class TestComdirectClient(unittest.TestCase):
@@ -17,16 +19,16 @@ class TestComdirectClient(unittest.TestCase):
         self.tan_handlers = {}
 
         # Patching dependencies
-        self.auth_patcher = patch("comdirect_api.client.Authenticator")
+        self.auth_patcher = patch("comdirect_mcp.client.Authenticator")
         self.MockAuthenticator = self.auth_patcher.start()
 
-        self.banking_patcher = patch("comdirect_api.client.BankingApi")
+        self.banking_patcher = patch("comdirect_mcp.client.BankingApi")
         self.MockBankingApi = self.banking_patcher.start()
 
-        self.brokerage_patcher = patch("comdirect_api.client.BrokerageApi")
+        self.brokerage_patcher = patch("comdirect_mcp.client.BrokerageApi")
         self.MockBrokerageApi = self.brokerage_patcher.start()
 
-        self.messages_patcher = patch("comdirect_api.client.MessagesApi")
+        self.messages_patcher = patch("comdirect_mcp.client.MessagesApi")
         self.MockMessagesApi = self.messages_patcher.start()
 
         self.client = ComdirectClient(self.credentials, self.tan_handlers)
@@ -141,6 +143,7 @@ class TestComdirectClient(unittest.TestCase):
 
         self.assertEqual(balance.current_value, Decimal("1000.00"))
         self.assertEqual(len(positions), 1)
+        self.client._brokerage.brokerage_v3_get_depot_positions.assert_called_with("dep_1", with_attr="instrument")
 
     def test_list_documents(self):
         mock_doc = MagicMock()
@@ -171,6 +174,78 @@ class TestComdirectClient(unittest.TestCase):
             "doc_1", _headers={"Accept": "application/pdf"}
         )
 
+    def test_two_step_login(self):
+        challenge = TanChallenge(id="ch_1", typ="P_TAN_PUSH", session_id="session_123")
+        self.mock_auth_instance.start.return_value = challenge
+        self.mock_auth_instance.complete.return_value = ("session_123", {"access_token": "token_abc"})
+
+        self.assertIs(self.client.start_login(), challenge)
+        self.assertFalse(self.client.is_logged_in)
+
+        self.client.complete_login(challenge)
+
+        self.mock_auth_instance.complete.assert_called_once_with(challenge, "")
+        self.assertTrue(self.client.is_logged_in)
+
+    def test_expiring_token_is_refreshed(self):
+        self.mock_auth_instance.authenticate.return_value = (
+            "session_123",
+            {"access_token": "old", "refresh_token": "r1", "expires_in": 30},
+        )
+        self.mock_auth_instance.refresh.return_value = {
+            "access_token": "new",
+            "refresh_token": "r2",
+            "expires_in": 599,
+        }
+        self.client.login()
+
+        # 30s left is inside the refresh margin
+        self.assertEqual(self.client._valid_access_token(), "new")
+        self.mock_auth_instance.refresh.assert_called_once_with("r1")
+
+        # fresh token is used as is
+        self.assertEqual(self.client._valid_access_token(), "new")
+        self.mock_auth_instance.refresh.assert_called_once()
+
+    def test_failed_refresh_ends_session(self):
+        self.mock_auth_instance.authenticate.return_value = (
+            "session_123",
+            {"access_token": "old", "refresh_token": "r1", "expires_in": 0},
+        )
+        self.mock_auth_instance.refresh.side_effect = AuthenticationError("expired")
+        self.client.login()
+
+        with self.assertRaises(AuthenticationError):
+            self.client._valid_access_token()
+        self.assertFalse(self.client.is_logged_in)
+
+    def test_token_without_expiry_is_not_refreshed(self):
+        self.client.login()
+
+        self.assertEqual(self.client._valid_access_token(), "token_abc")
+        self.mock_auth_instance.refresh.assert_not_called()
+
+    def test_logout_revokes_tokens_at_comdirect(self):
+        self.client.login()
+
+        self.client.logout()
+
+        self.mock_auth_instance.revoke.assert_called_once_with("token_abc")
+        self.assertFalse(self.client.is_logged_in)
+
+    def test_logout_clears_session_even_if_revoke_fails(self):
+        self.client.login()
+        self.mock_auth_instance.revoke.side_effect = AuthenticationError("expired")
+
+        self.client.logout()
+
+        self.assertFalse(self.client.is_logged_in)
+
+    def test_logout_without_session_does_not_call_comdirect(self):
+        self.client.logout()
+
+        self.mock_auth_instance.revoke.assert_not_called()
+
     def test_logout(self):
         self.client.login()
         self.assertIsNotNone(self.client._session_id)
@@ -197,7 +272,7 @@ class TestComdirectApiClient(unittest.TestCase):
         client = ComdirectApiClient(session_provider, configuration=config)
 
         # Test call_api
-        with patch("openapi_client.ApiClient.call_api") as mock_super_call:
+        with patch("comdirect_mcp._openapi.ApiClient.call_api") as mock_super_call:
             client.call_api("GET", "/test")
 
             # Check args passed to super

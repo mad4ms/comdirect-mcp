@@ -1,16 +1,22 @@
-# comdirect-api-wrapper
+# comdirect-mcp
 
-[![PyPI version](https://img.shields.io/pypi/v/comdirect-api-wrapper.svg)](https://pypi.org/project/comdirect-api-wrapper/)
-[![Build Status](https://github.com/mad4ms/comdirect-api-wrapper/actions/workflows/publish.yml/badge.svg)](https://github.com/mad4ms/comdirect-api-wrapper/actions/workflows/publish.yml)
-[![Tests](https://github.com/mad4ms/comdirect-api-wrapper/actions/workflows/tests.yml/badge.svg)](https://github.com/mad4ms/comdirect-api-wrapper/actions/workflows/tests.yml)
-![Python](https://img.shields.io/badge/python-3.12%2B-blue?style=flat&logo=python)
-[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+<!-- mcp-name: io.github.mad4ms/comdirect-mcp -->
 
-A modern, type-safe Python wrapper for the [comdirect REST API](https://www.comdirect.de/cms/kontakt-zugaenge-api.html).
+[![PyPI](https://img.shields.io/pypi/v/comdirect-mcp.svg)](https://pypi.org/project/comdirect-mcp/)
+[![Python](https://img.shields.io/pypi/pyversions/comdirect-mcp.svg)](https://pypi.org/project/comdirect-mcp/)
+[![Tests](https://github.com/mad4ms/comdirect-mcp/actions/workflows/tests.yml/badge.svg)](https://github.com/mad4ms/comdirect-mcp/actions/workflows/tests.yml)
+[![MCP](https://img.shields.io/badge/MCP-2026--07--28-blue)](https://modelcontextprotocol.io/specification/2026-07-28)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-This library allows you to interact with your Comdirect bank accounts programmatically. It handles the complex OAuth2 authentication flow (including 2FA challenge-response for PhotoTAN, PushTAN, and SMS-TAN), auto-refreshes tokens, and provides a pythonic interface for retrieving balances, transactions, and depot positions.
+**Read-only [Model Context Protocol](https://modelcontextprotocol.io) server and typed Python client for the
+[comdirect REST API](https://www.comdirect.de/cms/kontakt-zugaenge-api.html).**
 
-Includes an MCP server! Connect your AI so it can analyze your positions and judge your 💎🙌 (or lack thereof). See [MCP_USAGE.md](MCP_USAGE.md) for maximum loss potential.
+Let Claude, GitHub Copilot or any other MCP client look at your accounts, transactions, securities depot and
+postbox documents. The login is confirmed with your photoTAN app, and there is no tool that can move money.
+
+> [!WARNING]
+> This is an unofficial project, not affiliated with comdirect. It handles your banking credentials and sends
+> your financial data to the AI model you connect it to. Read the warning below and [SECURITY.md](SECURITY.md).
 
 ## Warnung (in Deutsch weil Comdirect)
 
@@ -20,13 +26,11 @@ Ich bin auch nicht perfekt, aber übernehme keine Haftung für Schäden, die dur
 
 Die API und damit das Repo hier nutzen aktuell nur lesende Endpunkte, aber Fehler können immer passieren. Comdirect kann die API ändern, Dependencies können im Zweifel auch Mist bauen ([Supply-Chain Attacks](https://docs.github.com/de/code-security/concepts/supply-chain-security/about-supply-chain-security)) und 2FA hilft zwar, ist aber kein Freifahrtschein.
 
-
-
 Bitte:
 - Nutzt das nur lokal auf eurem eigenen Rechner.
 - Teilt eure Zugangsdaten mit niemandem.
 - Packt Secrets in `.env` und committet die Datei nie.
-- Nutzt die [Pre-Commit Hooks](#pre-commit-hooks) um Secrets zu scannen. Gute Zeit bissel Devops-Kram zu lernen.
+- Nutzt die [Pre-Commit Hooks](docs/how-to/develop.md#pre-commit-hooks) um Secrets zu scannen. Gute Zeit bissel Devops-Kram zu lernen.
 - Spielt Updates nicht blind ein (Lockfile/Pinning hilft) und schaut bei Änderungen kurz drüber.
 
 **MCP-Server**: Wenn ihr den Server an einen nicht-lokalen AI-Client hängt, **gehen deine Daten raus**. Je nach Client/Setup können Kontodaten/Transaktionen in Logs/Telemetry landen oder durch Prompt-Injection aus Dokumenten/Verwendungszwecken in komische Richtungen gehen ([MCP Horror Stories: The GitHub Prompt Injection Data Heist](https://www.docker.com/blog/mcp-horror-stories-github-prompt-injection/)). Nutzt MCP nur, wenn ihr der Umgebung wirklich vertraut, und gebt nur die Daten frei, die ihr dafür braucht.
@@ -35,174 +39,163 @@ Da der gemeine r/finanzen User eh schon seine Kontoauszüge in ChatGPT kopiert, 
 
 Idealerweise ohne unnötige personenbezogene Daten. (Hauptsache, ihr lasst 'nen Stern da.)
 
+## Privacy: prefer a local model
+
+The server runs on your machine, but **every tool result is sent to the language model behind your MCP client**.
+With cloud assistants (Claude, GitHub Copilot, ChatGPT, ...) your balances, transactions and documents leave your
+computer and are processed under that provider's data policy.
+
+- **Most private:** use an MCP client with a **local model**, e.g. [LM Studio](https://lmstudio.ai) (supports MCP
+  servers directly) or another client running a model via Ollama or llama.cpp. Then nothing leaves your machine
+  except the requests to comdirect. Pick a model with good tool-calling support.
+- **With a cloud assistant:** check its data retention and training settings, use an account where your data is
+  not used for training, and ask only what you need.
+
+Details: [Privacy and security](docs/explanation/privacy-and-security.md) ·
+[Use a local model](docs/how-to/use-a-local-model.md)
+
 ## Features
 
--   **Authentication**: Full OAuth2 support with automatic token refresh and session handling.
--   **2FA Support**: Built-in callbacks for PhotoTAN (App), PushTAN, and SMS-TAN.
--   **Banking**: Retrieve account lists, balances, and transaction history.
--   **Brokerage**: Fetch depot overviews and detailed position data.
--   **Documents**: Download postbox documents (PDFs).
--   **Type Safe**: Fully typed domain models for great IDE support and autocompletion.
+- **MCP specification 2026-07-28** on the official MCP Python SDK v2, with fallback for older clients
+- **Push TAN login via elicitation**: your client asks you to approve the login in the photoTAN app; the TAN never reaches the model
+- **Credentials in the OS keychain**: `comdirect-mcp configure` stores them once, client configs contain no secrets
+- **No tool can move money**: only read endpoints, truthful tool annotations, structured output with JSON schemas
+- **Protects your access**: stops logging in before comdirect's lock after five unconfirmed TAN challenges, and
+  revokes the session at comdirect on logout and shutdown so it cannot be extended
+- **Privacy defaults**: counterparty IBANs masked, documents size-limited, untrusted-content hint for the model
+- **Automatic token refresh** and explicit session handling
+- **Typed Python client** (`py.typed`) for scripts and notebooks, independent of MCP
+- Listed in the [MCP Registry](https://registry.modelcontextprotocol.io) as `io.github.mad4ms/comdirect-mcp`
 
-## Installation
+### Tools
 
-### Using uv (Recommended)
+| Tool | Description |
+| --- | --- |
+| `login` | Starts a session; asks you to approve the push TAN |
+| `logout` | Ends the session and revokes it at comdirect (no further refresh) |
+| `list_accounts` | Accounts with balances |
+| `list_transactions` | Transactions of an account, filter by date, direction and state |
+| `list_depots` | Securities accounts |
+| `get_depot_positions` | Positions (name, ISIN, WKN, values, P&L) and depot balance |
+| `list_documents` | Postbox documents (statements, order confirmations, tax documents) |
+| `download_document` | A document as embedded resource (comdirect marks it as read) |
 
-```bash
-uv add comdirect-api-wrapper
-```
+Arguments and results: [Tools reference](docs/reference/tools.md).
 
-### Using pip
+## Quickstart
 
-```bash
-pip install comdirect-api-wrapper
-```
-
-## Quick Start
+New to this? Follow the [Getting started tutorial](docs/tutorials/getting-started.md).
 
 ### 1. Prerequisites
 
-You need user credentials AND API credentials from Comdirect.
-1.  Enable API access in your Comdirect settings (https://www.comdirect.de/cms/kontakt-zugaenge-api.html).
-2.  Obtain your `client_id` and `client_secret`.
-3. Your smartphone with the Comdirect PhotoTAN app installed (for 2FA).
+- [uv](https://docs.astral.sh/uv/) (provides `uvx`)
+- comdirect API access: in the online banking under **Verwaltung → Entwicklerzugang** you get a Client ID and
+  Client Secret ([step by step](docs/how-to/get-comdirect-api-access.md))
+- **photoTAN Push** as your default TAN method
 
-### 2. Configuration
+### 2. Store your credentials in the OS keychain
 
-`python-dotenv` to manage secrets. Create a `.env` file:
-
-```ini
-COMDIRECT_USERNAME=your_username
-COMDIRECT_PASSWORD=your_password
-COMDIRECT_CLIENT_ID=your_client_id
-COMDIRECT_CLIENT_SECRET=your_client_secret
+```bash
+uvx comdirect-mcp@0.4.0 configure
 ```
 
-### 3. Usage Example
+Prompts for Client ID, Client Secret, Zugangsnummer and PIN and stores them in the macOS Keychain, Windows
+Credential Manager or Linux Secret Service. Other options (VS Code inputs, environment, `.env`):
+[Manage credentials](docs/how-to/manage-credentials.md).
 
-```python
-import os
-from dotenv import load_dotenv
-from comdirect_api.client import ComdirectClient
-from comdirect_api.utils import default_photo_tan_callback, default_push_tan_callback
+### 3. Add the server to your MCP client
 
-load_dotenv()
-
-# 1. Setup Credentials
-credentials = {
-    "username": os.getenv("COMDIRECT_USERNAME"),
-    "password": os.getenv("COMDIRECT_PASSWORD"),
-    "client_id": os.getenv("COMDIRECT_CLIENT_ID"),
-    "client_secret": os.getenv("COMDIRECT_CLIENT_SECRET"),
-}
-
-# 2. Setup 2FA Handlers (What happens when the bank asks for a TAN?)
-tan_handlers = {
-    # For PhotoTAN App (Push):
-    "push_tan_cb": default_push_tan_callback,
-    # For PhotoTAN Graphic (Scan):
-    "photo_tan_cb": default_photo_tan_callback,
-}
-
-# 3. Initialize & Login
-client = ComdirectClient(credentials, tan_handlers)
-client.login() # Triggers 2FA interaction if needed
-
-# 4. Fetch Data
-# --- Accounts ---
-for account in client.list_accounts():
-    print(f"Account: {account.id} | Balance: {account.balance} {account.currency}")
-
-    # Fetch Transactions
-    for tx in client.list_transactions(account.id):
-        print(f"  {tx.booking_date}: {tx.amount} {tx.currency} - {tx.purpose}")
-
-    # # or
-    # transactions = list(client.iter_all_transactions(account.id))
-    # for tx in transactions:
-    #     print(f"  {tx.booking_date}: {tx.amount} {tx.currency} - {tx.purpose}")
-
-# --- Depot ---
-for depot in client.list_depots():
-    balance, positions = client.get_depot_positions(depot.id)
-    print(f"Depot Value: {balance.current_value} EUR")
-    for pos in positions:
-        print(f"  {pos.quantity}x {pos.instrument_name} ({pos.wkn})")
-```
-
-## Advanced Usage
-
-### Pagination
-
-For accounts with many transactions, use the iterator which handles pagination automatically:
-
-```python
-for tx in client.iter_all_transactions(account_id):
-    # This automatically fetches pages as you iterate
-    process_transaction(tx)
-```
-
-### Document Retrieval
-
-```python
-docs = client.list_documents()
-for doc in docs:
-    print(f"Downloading {doc.name}...")
-    pdf_bytes = client.download_document(doc.id, doc.mime_type)
-    with open(f"{doc.name}.pdf", "wb") as f:
-        f.write(pdf_bytes)
-```
-
-## Model Context Protocol (MCP) Server
-
-This library includes a fully functional [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server. This allows AI assistants (like Claude Desktop) to connect directly to your Comdirect accounts to fetch balances, search transactions, and analyze your portfolio.
-
-See [MCP_USAGE.md](MCP_USAGE.md) for setup and usage instructions.
-
-### Quick Config for Claude Desktop
+**Claude Desktop** (*Settings → Developer → Edit Config*) and **LM Studio** (*Program → Install → Edit mcp.json*):
 
 ```json
 {
   "mcpServers": {
     "comdirect": {
-      "command": "python",
-      "args": ["/absolute/path/to/comdirect-api-wrapper/mcp_server.py"],
-      "env": {
-        "COMDIRECT_CLIENT_ID": "...",
-        "COMDIRECT_CLIENT_SECRET": "...",
-        "COMDIRECT_USERNAME": "...",
-        "COMDIRECT_PASSWORD": "..."
-      }
+      "command": "uvx",
+      "args": ["comdirect-mcp@0.4.0"]
     }
   }
 }
 ```
 
+**Claude Code**
+
+```bash
+claude mcp add --transport stdio --scope user comdirect -- uvx comdirect-mcp@0.4.0
+```
+
+**VS Code** (*MCP: Open User Configuration*)
+
+```json
+{
+  "servers": {
+    "comdirect": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["comdirect-mcp@0.4.0"]
+    }
+  }
+}
+```
+
+Pinning the version (`@0.4.0`) means updates only happen when you decide. More clients:
+[Configure MCP clients](docs/how-to/configure-mcp-clients.md).
+
+### 4. Ask
+
+> Wie haben sich meine Ausgaben im letzten Monat entwickelt, und welche Depotposition läuft am schlechtesten?
+
+The assistant calls `login`, your phone receives the push TAN, you approve it and confirm the dialog in
+your client. Then the assistant can use the other tools. Problems: [Troubleshoot](docs/how-to/troubleshoot.md).
+
+## Python library
+
+The same client is available for your own scripts:
+
+```python
+from comdirect_mcp import ComdirectClient
+from comdirect_mcp.utils import default_push_tan_callback
+
+client = ComdirectClient(
+    {"client_id": "...", "client_secret": "...", "username": "...", "password": "..."},
+    {"push_tan_cb": default_push_tan_callback},
+)
+client.login()  # approve the push TAN, then press Enter
+
+for account in client.list_accounts():
+    print(account.id, account.balance, account.currency)
+```
+
+See [Use the Python library](docs/how-to/use-the-python-library.md), the [Python API reference](docs/reference/python-api.md)
+and the [examples](examples/).
+
+## Documentation
+
+The [documentation](docs/README.md) is organized as tutorial, how-to guides, reference and explanation:
+
+| | |
+| --- | --- |
+| **Tutorial** | [Getting started](docs/tutorials/getting-started.md) |
+| **How-to** | [API access](docs/how-to/get-comdirect-api-access.md) · [Credentials](docs/how-to/manage-credentials.md) · [MCP clients](docs/how-to/configure-mcp-clients.md) · [Local model](docs/how-to/use-a-local-model.md) · [Troubleshoot](docs/how-to/troubleshoot.md) · [Python library](docs/how-to/use-the-python-library.md) · [Develop](docs/how-to/develop.md) |
+| **Reference** | [Tools](docs/reference/tools.md) · [Configuration](docs/reference/configuration.md) · [Python API](docs/reference/python-api.md) |
+| **Explanation** | [Login and sessions](docs/explanation/login-and-sessions.md) · [Privacy and security](docs/explanation/privacy-and-security.md) · [Design](docs/explanation/design.md) |
+
+[SECURITY.md](SECURITY.md) describes the threat model and how to report vulnerabilities, [CHANGELOG.md](CHANGELOG.md)
+lists the changes per release.
+
+## Contributing
+
+Issues and pull requests are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[Code of Conduct](CODE_OF_CONDUCT.md). AI coding agents find their instructions in [AGENTS.md](AGENTS.md).
+
 ## Disclaimer
 
-This project is not affiliated with, maintained, or endorsed by the comdirect bank. Use this software at your own risk. I provide no warranty and accept no liability for any financial losses or damages resulting from the use of this software.
+This project is not affiliated with, maintained, or endorsed by comdirect bank AG. Use it at your own risk.
+There is no warranty and no liability for any financial losses or damages resulting from its use.
 
-This project is designed to run locally and does not collect, store, or transmit your banking credentials to any third parties.
+The software runs locally and does not send your credentials anywhere except to comdirect. Your MCP client
+and its model provider receive the data the tools return.
 
-Nevertheless, be cautious and **review the code before use, especially when dealing with sensitive financial data**.
+## License
 
----
-
-**License**: MIT
-
-## Development
-
-### Pre-commit Hooks
-
-This project uses `pre-commit` to ensure code quality and prevent accidental secret commits.
-
-1.  Install pre-commit:
-    ```bash
-    uv pip install pre-commit
-    ```
-2.  Install the git hooks:
-    ```bash
-    pre-commit install
-    ```
-
-Now, checks (formatting, linting, secret scanning) will run automatically before every commit.
+[MIT](LICENSE)

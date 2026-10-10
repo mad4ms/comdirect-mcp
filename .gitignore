@@ -1,26 +1,35 @@
-*.pyc
-.tox/
-*.egg-info
-dist/
-bin/creds.py
-build/
+# Secrets - never commit credentials
 .env
-.venv/
+.env.*
+!.env.example
+
+# Python
 __pycache__/
-./tmp/
+*.py[cod]
 *.egg-info/
-tmp/
-# Unit test / coverage reports
+.venv/
+build/
+dist/
+
+# Tooling caches and reports
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .coverage
 htmlcov/
-.pytest_cache/
 
-# Type checking
-.mypy_cache/
+# OpenAPI generation workspace (scripts/bootstrap_client.sh)
+tmp/
 
-# Linting
-.ruff_cache/
+# Editors: share only the project's MCP config and recommended extensions
+.vscode/*
+!.vscode/mcp.json
+!.vscode/extensions.json
+.idea/
 
-# OS specific
+# OS
 .DS_Store
 Thumbs.db
+
+# Third-party documents that must not be redistributed (e.g. the comdirect API PDF)
+docs/reference/*.pdf

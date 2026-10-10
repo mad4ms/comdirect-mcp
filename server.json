@@ -1,0 +1,59 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.mad4ms/comdirect-mcp",
+  "title": "comdirect",
+  "description": "Read-only access to comdirect bank accounts, transactions, depots and postbox documents.",
+  "version": "0.4.0",
+  "websiteUrl": "https://github.com/mad4ms/comdirect-mcp",
+  "repository": {
+    "url": "https://github.com/mad4ms/comdirect-mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "comdirect-mcp",
+      "version": "0.4.0",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "COMDIRECT_CLIENT_ID",
+          "description": "comdirect API client id (alternatively stored in the OS keychain via `comdirect-mcp configure`)",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "COMDIRECT_CLIENT_SECRET",
+          "description": "comdirect API client secret (alternatively stored in the OS keychain via `comdirect-mcp configure`)",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "COMDIRECT_USERNAME",
+          "description": "comdirect Zugangsnummer (alternatively stored in the OS keychain via `comdirect-mcp configure`)",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "COMDIRECT_PASSWORD",
+          "description": "comdirect PIN (alternatively stored in the OS keychain via `comdirect-mcp configure`)",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "COMDIRECT_MCP_PUSH_TAN_WAIT",
+          "description": "Seconds to wait for the push TAN approval if the client cannot show a confirmation dialog",
+          "default": "30"
+        },
+        {
+          "name": "COMDIRECT_MCP_UNMASK_IBANS",
+          "description": "Set to true to return counterparty IBANs unmasked",
+          "default": "false"
+        }
+      ]
+    }
+  ]
+}

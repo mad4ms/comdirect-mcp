@@ -1,0 +1,50 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Never post real banking data.** Remove account numbers, IBANs, amounts, names, payment texts,
+        document contents and credentials from everything you paste, including logs and screenshots.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy
+      options:
+        - label: I removed all personal banking data and credentials from this report.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: comdirect-mcp version
+      placeholder: "0.4.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: usage
+    attributes:
+      label: How do you use it?
+      options:
+        - MCP server
+        - Python library
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: MCP client and model
+      description: For the MCP server, e.g. "Claude Desktop 2.3, Claude", "LM Studio 0.4, Qwen 3"
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Steps to reproduce, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (anonymized)
+      description: Error messages or server logs (stderr), with all personal data removed.
+      render: text
