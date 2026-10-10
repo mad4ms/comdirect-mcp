@@ -112,7 +112,7 @@ New to this? Follow the [Getting started tutorial](docs/tutorials/getting-starte
 ### 2. Store your credentials in the OS keychain
 
 ```bash
-uvx comdirect-mcp@0.5.0 configure
+uvx comdirect-mcp@0.5.1 configure
 ```
 
 Prompts for Client ID, Client Secret, Zugangsnummer and PIN and stores them in the macOS Keychain, Windows
@@ -128,7 +128,7 @@ Credential Manager or Linux Secret Service. Other options (VS Code inputs, envir
   "mcpServers": {
     "comdirect": {
       "command": "uvx",
-      "args": ["comdirect-mcp@0.5.0"]
+      "args": ["comdirect-mcp@0.5.1"]
     }
   }
 }
@@ -137,7 +137,7 @@ Credential Manager or Linux Secret Service. Other options (VS Code inputs, envir
 **Claude Code**
 
 ```bash
-claude mcp add --transport stdio --scope user comdirect -- uvx comdirect-mcp@0.5.0
+claude mcp add --transport stdio --scope user comdirect -- uvx comdirect-mcp@0.5.1
 ```
 
 **VS Code** (*MCP: Open User Configuration*)
@@ -148,7 +148,7 @@ claude mcp add --transport stdio --scope user comdirect -- uvx comdirect-mcp@0.5
     "comdirect": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["comdirect-mcp@0.5.0"]
+      "args": ["comdirect-mcp@0.5.1"]
     }
   }
 }
@@ -157,11 +157,11 @@ claude mcp add --transport stdio --scope user comdirect -- uvx comdirect-mcp@0.5
 **Ollama** (via [ollmcp](https://github.com/jonigl/mcp-client-for-ollama))
 
 ```bash
-uvx ollmcp mcp add --scope user comdirect -- uvx comdirect-mcp@0.5.0
+uvx ollmcp mcp add --scope user comdirect -- uvx comdirect-mcp@0.5.1
 uvx ollmcp -m <model>
 ```
 
-Pinning the version (`@0.5.0`) means updates only happen when you decide. More clients:
+Pinning the version (`@0.5.1`) means updates only happen when you decide. More clients:
 [Configure MCP clients](docs/how-to/configure-mcp-clients.md).
 
 ### 4. Ask

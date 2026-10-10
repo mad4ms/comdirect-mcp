@@ -5,7 +5,7 @@ assume your credentials are in the OS keychain ([Manage credentials](manage-cred
 contain no secrets.
 
 > [!TIP]
-> Always pin the version (`comdirect-mcp@0.5.0`). Without a pin, `uvx` may start a newer release you have not
+> Always pin the version (`comdirect-mcp@0.5.1`). Without a pin, `uvx` may start a newer release you have not
 > reviewed - for software that holds your banking credentials, update deliberately.
 
 If a client cannot find `uvx`, use its absolute path (`which uvx`, e.g. `/Users/you/.local/bin/uvx`).
@@ -19,7 +19,7 @@ If a client cannot find `uvx`, use its absolute path (`which uvx`, e.g. `/Users/
   "mcpServers": {
     "comdirect": {
       "command": "uvx",
-      "args": ["comdirect-mcp@0.5.0"]
+      "args": ["comdirect-mcp@0.5.1"]
     }
   }
 }
@@ -30,7 +30,7 @@ Restart Claude Desktop after saving.
 ## Claude Code
 
 ```bash
-claude mcp add --transport stdio --scope user comdirect -- uvx comdirect-mcp@0.5.0
+claude mcp add --transport stdio --scope user comdirect -- uvx comdirect-mcp@0.5.1
 ```
 
 `--scope user` makes the server available in all projects. Check it with `claude mcp list` or `/mcp`.
@@ -45,7 +45,7 @@ claude mcp add --transport stdio --scope user comdirect -- uvx comdirect-mcp@0.5
     "comdirect": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["comdirect-mcp@0.5.0"]
+      "args": ["comdirect-mcp@0.5.1"]
     }
   }
 }
@@ -67,7 +67,7 @@ LM Studio runs models on your machine and reads MCP servers from `mcp.json` (*Pr
   "mcpServers": {
     "comdirect": {
       "command": "uvx",
-      "args": ["comdirect-mcp@0.5.0"]
+      "args": ["comdirect-mcp@0.5.1"]
     }
   }
 }
@@ -80,7 +80,7 @@ See [Use a local model](use-a-local-model.md).
 Ollama needs an MCP client in between; [ollmcp](https://github.com/jonigl/mcp-client-for-ollama) works:
 
 ```bash
-uvx ollmcp mcp add --scope user comdirect -- uvx comdirect-mcp@0.5.0
+uvx ollmcp mcp add --scope user comdirect -- uvx comdirect-mcp@0.5.1
 uvx ollmcp -m <model>
 ```
 
@@ -89,7 +89,7 @@ ollmcp shows no login dialog, so approve the push within the fallback window (30
 
 ## Other clients
 
-Any MCP client that can start a stdio server works: command `uvx`, arguments `["comdirect-mcp@0.5.0"]`.
+Any MCP client that can start a stdio server works: command `uvx`, arguments `["comdirect-mcp@0.5.1"]`.
 Alternatives: `comdirect-mcp` after `uv tool install comdirect-mcp`, or `python -m comdirect_mcp`.
 
 ## Login dialog support
