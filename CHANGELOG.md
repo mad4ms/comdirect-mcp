@@ -6,7 +6,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-Planned as 0.4.0. The project is now published as **`comdirect-mcp`** (previously `comdirect-api-wrapper`) and
+## [0.4.0] - 2026-10-10
+
+The project is now published as **`comdirect-mcp`** (previously `comdirect-api-wrapper`) and
 focuses on the MCP server, while keeping the typed Python client.
 
 ### Changed (breaking)
@@ -86,7 +88,8 @@ Compared against comdirect's PDF documentation (*REST API – Schnittstellenspez
 
 - Initial release: OAuth + 2FA login, accounts, transactions, depots.
 
-[Unreleased]: https://github.com/mad4ms/comdirect-mcp/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/mad4ms/comdirect-mcp/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/mad4ms/comdirect-mcp/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/mad4ms/comdirect-mcp/compare/v0.3...v0.3.1
 [0.3]: https://github.com/mad4ms/comdirect-mcp/compare/v0.2...v0.3
 [0.2]: https://github.com/mad4ms/comdirect-mcp/compare/v0.1...v0.2
