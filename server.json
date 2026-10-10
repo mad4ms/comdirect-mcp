@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.mad4ms/comdirect-mcp",
   "title": "comdirect",
-  "description": "Read-only access to comdirect bank accounts, transactions, depots and postbox documents.",
-  "version": "0.4.0",
+  "description": "Read access to comdirect balances, transactions, portfolios, securities, orders and postbox documents.",
+  "version": "0.5.0",
   "websiteUrl": "https://github.com/mad4ms/comdirect-mcp",
   "repository": {
     "url": "https://github.com/mad4ms/comdirect-mcp",
@@ -13,7 +13,7 @@
     {
       "registryType": "pypi",
       "identifier": "comdirect-mcp",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
@@ -21,25 +21,25 @@
       "environmentVariables": [
         {
           "name": "COMDIRECT_CLIENT_ID",
-          "description": "comdirect API client id (alternatively stored in the OS keychain via `comdirect-mcp configure`)",
+          "description": "comdirect API client id (or stored in the OS keychain via `comdirect-mcp configure`)",
           "isRequired": false,
           "isSecret": true
         },
         {
           "name": "COMDIRECT_CLIENT_SECRET",
-          "description": "comdirect API client secret (alternatively stored in the OS keychain via `comdirect-mcp configure`)",
+          "description": "comdirect API client secret (or stored in the OS keychain via `comdirect-mcp configure`)",
           "isRequired": false,
           "isSecret": true
         },
         {
           "name": "COMDIRECT_USERNAME",
-          "description": "comdirect Zugangsnummer (alternatively stored in the OS keychain via `comdirect-mcp configure`)",
+          "description": "comdirect Zugangsnummer (or stored in the OS keychain via `comdirect-mcp configure`)",
           "isRequired": false,
           "isSecret": true
         },
         {
           "name": "COMDIRECT_PASSWORD",
-          "description": "comdirect PIN (alternatively stored in the OS keychain via `comdirect-mcp configure`)",
+          "description": "comdirect PIN (or stored in the OS keychain via `comdirect-mcp configure`)",
           "isRequired": false,
           "isSecret": true
         },
@@ -52,6 +52,15 @@
           "name": "COMDIRECT_MCP_UNMASK_IBANS",
           "description": "Set to true to return counterparty IBANs unmasked",
           "default": "false"
+        },
+        {
+          "name": "COMDIRECT_MCP_MASK_NAMES",
+          "description": "Set to true to replace counterparty names with stable pseudonyms",
+          "default": "false"
+        },
+        {
+          "name": "COMDIRECT_ENV_FILE",
+          "description": "Path to a dotenv file with the credentials (opt-in; prefer the OS keychain)"
         }
       ]
     }

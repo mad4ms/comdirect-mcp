@@ -10,6 +10,7 @@ from comdirect_mcp.credentials import CREDENTIAL_VARS, KEYRING_SERVICE, MissingC
 def clean(monkeypatch, tmp_path):
     for name in CREDENTIAL_VARS.values():
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("COMDIRECT_ENV_FILE", raising=False)
     monkeypatch.chdir(tmp_path)
     return tmp_path
 
@@ -18,9 +19,10 @@ def test_precedence_environment_keyring_dotenv(clean, monkeypatch, memory_keyrin
     monkeypatch.setenv("COMDIRECT_CLIENT_ID", "from-env")
     keyring.set_password(KEYRING_SERVICE, "COMDIRECT_CLIENT_ID", "from-keyring")
     keyring.set_password(KEYRING_SERVICE, "COMDIRECT_CLIENT_SECRET", "from-keyring")
-    (clean / ".env").write_text(
+    (clean / "secrets.env").write_text(
         "COMDIRECT_CLIENT_SECRET=from-dotenv\nCOMDIRECT_USERNAME=from-dotenv\nCOMDIRECT_PASSWORD=from-dotenv\n"
     )
+    monkeypatch.setenv("COMDIRECT_ENV_FILE", str(clean / "secrets.env"))
 
     assert load_credentials() == {
         "client_id": "from-env",
@@ -41,7 +43,8 @@ def test_missing_credentials_are_listed(clean):
 
 def test_no_keychain_falls_back_to_dotenv(clean, monkeypatch):
     monkeypatch.setattr(keyring, "get_password", lambda *args: (_ for _ in ()).throw(NoKeyringError("none")))
-    (clean / ".env").write_text("".join(f"{name}=v\n" for name in CREDENTIAL_VARS.values()))
+    (clean / "secrets.env").write_text("".join(f"{name}=v\n" for name in CREDENTIAL_VARS.values()))
+    monkeypatch.setenv("COMDIRECT_ENV_FILE", str(clean / "secrets.env"))
 
     assert set(load_credentials().values()) == {"v"}
 
@@ -84,3 +87,10 @@ def test_cli_version(capsys):
     with pytest.raises(SystemExit):
         cli.main(["--version"])
     assert capsys.readouterr().out.startswith("comdirect-mcp ")
+
+
+def test_dotenv_in_working_directory_is_not_read_implicitly(clean):
+    (clean / ".env").write_text("".join(f"{name}=v\n" for name in CREDENTIAL_VARS.values()))
+
+    with pytest.raises(MissingCredentialsError):
+        load_credentials()

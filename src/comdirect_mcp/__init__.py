@@ -5,7 +5,7 @@ from importlib.metadata import PackageNotFoundError, version
 from ._openapi.exceptions import ApiException
 from .auth import TanChallenge
 from .client import ComdirectClient
-from .exceptions import AuthenticationError, ComdirectError, TanError
+from .exceptions import AuthenticationError, ComdirectError, DataError, TanError, TransactionFilterError
 
 try:
     __version__ = version("comdirect-mcp")
@@ -17,7 +17,9 @@ __all__ = [
     "AuthenticationError",
     "ComdirectClient",
     "ComdirectError",
+    "DataError",
     "TanChallenge",
     "TanError",
+    "TransactionFilterError",
     "__version__",
 ]

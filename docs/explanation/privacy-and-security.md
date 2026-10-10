@@ -42,13 +42,20 @@ No model is immune to prompt injection. Keep a human in the loop for anything th
 
 ## Data minimization defaults
 
-- Counterparty IBANs are masked (`DE**...3000`) unless `COMDIRECT_MCP_UNMASK_IBANS` is set.
+- Counterparty IBANs and own account numbers are masked (`DE**...3000`, `...7890`) unless
+  `COMDIRECT_MCP_UNMASK_IBANS` is set.
+- Counterparty names can be replaced with pseudonyms (`COMDIRECT_MCP_MASK_NAMES=true`), e.g. to keep names of
+  family members away from a cloud model. Pseudonyms are stable within a server run, so summaries per counterparty
+  still work, and cannot be linked across runs. Payment texts may still contain names.
+- Results are compact: no null fields, references only on request (`verbose`), and `summarize_transactions`
+  answers cash flow questions with totals instead of individual transactions.
 - Transaction lists are limited (`limit`, default 250) and can be filtered by date.
 - Documents are only downloaded on request and are size-limited.
 
 ## Credentials and session
 
-- Credentials come from the OS keychain, environment or `.env`; they are never logged or returned by a tool.
+- Credentials come from the OS keychain, the environment or an explicitly named dotenv file; they are never
+  logged or returned by a tool.
 - Each session needs a 2FA approval on your phone.
 - Tokens live in memory only. On logout and when the server stops, the session is revoked at comdirect so it
   cannot be extended; the last access token expires within 10 minutes.

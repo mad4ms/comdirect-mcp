@@ -17,7 +17,7 @@ Only the latest release is supported with fixes.
 
 | Asset | Protection |
 | --- | --- |
-| Credentials (client id/secret, Zugangsnummer, PIN) | Read from the OS keychain, environment or a git-ignored `.env`; never logged or returned by tools |
+| Credentials (client id/secret, Zugangsnummer, PIN) | Read from the OS keychain, the environment or an explicitly named dotenv file (`COMDIRECT_ENV_FILE`); never logged or returned by tools |
 | Session activation | Requires the push TAN to be approved in the photoTAN app (2FA). The TAN never passes through the language model |
 | Money | The server uses read-only endpoints only. There is no tool that can place orders or transfer money |
 | Access tokens | Kept in memory only; refreshed automatically. On `logout` and server shutdown the session is revoked at comdirect: it cannot be extended, the last access token expires within 10 minutes |
@@ -31,9 +31,9 @@ Only the latest release is supported with fixes.
 - **Prompt injection.** Payment references, counterparty names and documents are third-party
   content. They can contain text that tries to manipulate the assistant. The server marks them as
   untrusted in its instructions, but no model is immune.
-- **Personal data.** Counterparty IBANs are masked by default (`COMDIRECT_MCP_UNMASK_IBANS`), names,
-  amounts and payment texts are not.
-- **Supply chain.** Pin the version you run (for example `uvx comdirect-mcp@0.4.0`) instead of
+- **Personal data.** Counterparty IBANs and account numbers are masked by default, names only on request
+  (`COMDIRECT_MCP_MASK_NAMES`); amounts and payment texts are not.
+- **Supply chain.** Pin the version you run (for example `uvx comdirect-mcp@0.5.0`) instead of
   always pulling the latest release, and review changes before upgrading.
 
 ## Safeguards in this repository

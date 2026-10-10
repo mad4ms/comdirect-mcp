@@ -63,7 +63,10 @@ Details: [Privacy and security](docs/explanation/privacy-and-security.md) ·
 - **No tool can move money**: only read endpoints, truthful tool annotations, structured output with JSON schemas
 - **Protects your access**: stops logging in before comdirect's lock after five unconfirmed TAN challenges, and
   revokes the session at comdirect on logout and shutdown so it cannot be extended
-- **Privacy defaults**: counterparty IBANs masked, documents size-limited, untrusted-content hint for the model
+- **Built for agents**: compact results without empty fields, one `counterparty` instead of SEPA roles, cleaned-up
+  payment texts, server-side summaries for cash flow questions
+- **Privacy defaults**: IBANs and account numbers masked, optional name pseudonyms, documents size-limited,
+  untrusted-content hint for the model
 - **Automatic token refresh** and explicit session handling
 - **Typed Python client** (`py.typed`) for scripts and notebooks, independent of MCP
 - Listed in the [MCP Registry](https://registry.modelcontextprotocol.io) as `io.github.mad4ms/comdirect-mcp`
@@ -74,12 +77,24 @@ Details: [Privacy and security](docs/explanation/privacy-and-security.md) ·
 | --- | --- |
 | `login` | Starts a session; asks you to approve the push TAN |
 | `logout` | Ends the session and revokes it at comdirect (no further refresh) |
-| `list_accounts` | Accounts with balances |
-| `list_transactions` | Transactions of an account, filter by date, direction and state |
+| `list_accounts` | Accounts with type (Girokonto, Tagesgeld, ...) and balances |
+| `get_wealth_overview` | All product balances with bank-supplied EUR totals, including loans and savings |
+| `list_depot_transactions` | Securities purchases, sales and transfers with filters and continuation |
+| `get_instrument` | Security metadata; optional fund fees/ratings and derivative details |
+| `list_transactions` | Transactions with date, amount, counterparty and cleaned-up purpose; compact by default |
+| `summarize_transactions` | Cash flow and spending per month, counterparty or type, computed on the server |
+| `list_cards` | Card balances (Visa); the API has no card transactions |
 | `list_depots` | Securities accounts |
 | `get_depot_positions` | Positions (name, ISIN, WKN, values, P&L) and depot balance |
 | `list_documents` | Postbox documents (statements, order confirmations, tax documents) |
 | `download_document` | A document as embedded resource (comdirect marks it as read) |
+| `get_account_balance` | Balance and masked static data for one account |
+| `get_depot_position` | One securities position, with optional details |
+| `summarize_portfolio` | Largest positions and allocation percentages per currency |
+| `list_orders` / `get_order` | Read the order book and individual orders; never place or change orders |
+| `get_order_dimensions` | Available trading venues, currencies and order types |
+| `get_document_cover` | Bounded plain text from the document pre-page |
+| `extract_document_text` | Bounded PDF text with page continuation; downloading marks it as read |
 
 Arguments and results: [Tools reference](docs/reference/tools.md).
 
@@ -97,7 +112,7 @@ New to this? Follow the [Getting started tutorial](docs/tutorials/getting-starte
 ### 2. Store your credentials in the OS keychain
 
 ```bash
-uvx comdirect-mcp@0.4.0 configure
+uvx comdirect-mcp@0.5.0 configure
 ```
 
 Prompts for Client ID, Client Secret, Zugangsnummer and PIN and stores them in the macOS Keychain, Windows
@@ -113,7 +128,7 @@ Credential Manager or Linux Secret Service. Other options (VS Code inputs, envir
   "mcpServers": {
     "comdirect": {
       "command": "uvx",
-      "args": ["comdirect-mcp@0.4.0"]
+      "args": ["comdirect-mcp@0.5.0"]
     }
   }
 }
@@ -122,7 +137,7 @@ Credential Manager or Linux Secret Service. Other options (VS Code inputs, envir
 **Claude Code**
 
 ```bash
-claude mcp add --transport stdio --scope user comdirect -- uvx comdirect-mcp@0.4.0
+claude mcp add --transport stdio --scope user comdirect -- uvx comdirect-mcp@0.5.0
 ```
 
 **VS Code** (*MCP: Open User Configuration*)
@@ -133,7 +148,7 @@ claude mcp add --transport stdio --scope user comdirect -- uvx comdirect-mcp@0.4
     "comdirect": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["comdirect-mcp@0.4.0"]
+      "args": ["comdirect-mcp@0.5.0"]
     }
   }
 }
@@ -142,11 +157,11 @@ claude mcp add --transport stdio --scope user comdirect -- uvx comdirect-mcp@0.4
 **Ollama** (via [ollmcp](https://github.com/jonigl/mcp-client-for-ollama))
 
 ```bash
-uvx ollmcp mcp add --scope user comdirect -- uvx comdirect-mcp@0.4.0
+uvx ollmcp mcp add --scope user comdirect -- uvx comdirect-mcp@0.5.0
 uvx ollmcp -m <model>
 ```
 
-Pinning the version (`@0.4.0`) means updates only happen when you decide. More clients:
+Pinning the version (`@0.5.0`) means updates only happen when you decide. More clients:
 [Configure MCP clients](docs/how-to/configure-mcp-clients.md).
 
 ### 4. Ask

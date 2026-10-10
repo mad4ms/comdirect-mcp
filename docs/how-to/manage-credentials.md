@@ -5,14 +5,14 @@ The server looks up each credential in this order and uses the first value it fi
 1. **Environment variable** (`COMDIRECT_CLIENT_ID`, `COMDIRECT_CLIENT_SECRET`, `COMDIRECT_USERNAME`,
    `COMDIRECT_PASSWORD`), e.g. set in the MCP client's config
 2. **OS keychain** entry with the same name under the service `comdirect-mcp`
-3. **`.env` file** in the server's working directory
+3. **Dotenv file** named by `COMDIRECT_ENV_FILE` (opt-in; no `.env` is read implicitly)
 
 Where you get the values: [Get comdirect API access](get-comdirect-api-access.md).
 
 ## Recommended: OS keychain
 
 ```bash
-uvx comdirect-mcp@0.4.0 configure     # or: comdirect-mcp configure
+uvx comdirect-mcp@0.5.0 configure     # or: comdirect-mcp configure
 ```
 
 - Prompts for the four values; Client Secret and PIN are not echoed.
@@ -23,7 +23,7 @@ uvx comdirect-mcp@0.4.0 configure     # or: comdirect-mcp configure
 Remove them again:
 
 ```bash
-uvx comdirect-mcp@0.4.0 configure --delete
+uvx comdirect-mcp@0.5.0 configure --delete
 ```
 
 On macOS, the Keychain may ask once whether the Python interpreter may read the entries; choose *Always Allow*.
@@ -43,7 +43,7 @@ VS Code can prompt for secrets and keep them in its secure storage instead of `m
     "comdirect": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["comdirect-mcp@0.4.0"],
+      "args": ["comdirect-mcp@0.5.0"],
       "env": {
         "COMDIRECT_CLIENT_ID": "User_...",
         "COMDIRECT_USERNAME": "...",
@@ -60,11 +60,19 @@ VS Code can prompt for secrets and keep them in its secure storage instead of `m
 Every client can pass environment variables (`env` in Claude Desktop, `--env` for `claude mcp add`). This is
 simple, but the values are stored **in plain text** in the client's config file. Prefer the keychain.
 
-## `.env` file
+## Dotenv file (opt-in)
 
-For development and the [Python library](use-the-python-library.md): copy `.env.example` to `.env` and fill it
-in. The file is git-ignored. The server reads it from its working directory, which MCP clients usually do not
-set, so this is not a good fit for desktop clients.
+The server reads a dotenv file only when `COMDIRECT_ENV_FILE` points to it. It never picks up a `.env` from its
+working directory: an MCP client starts the server in an arbitrary directory, and a file with your PIN should not
+be used by accident.
+
+```bash
+COMDIRECT_ENV_FILE=/path/to/comdirect.env comdirect-mcp
+```
+
+For development and the [Python library](use-the-python-library.md): copy `.env.example` to `.env` (git-ignored).
+The examples load it themselves; this repository's `.vscode/mcp.json` passes it to the server via `envFile`.
+Prefer the keychain wherever possible - a dotenv file keeps the PIN in plain text.
 
 ## Rotate or revoke
 
