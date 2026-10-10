@@ -397,6 +397,50 @@ class ComdirectClient:
             raise ApiException(http_resp=response)
         return json.loads(response.data or b"{}")
 
+    def _get_all_pages(
+        self,
+        resource_path: str,
+        query_params: list[tuple[str, Any]],
+        path_params: dict[str, str],
+        id_key: str,
+        label: str,
+        hint: str,
+    ) -> list[dict[str, Any]]:
+        """Follow bank pages by raw offset; stalled, repeated or shrinking pages fail instead of truncating."""
+        rows: list[dict[str, Any]] = []
+        first = 0
+        matches: int | None = None
+        seen_pages: set[str] = set()
+        seen_ids: set[str] = set()
+        for _ in range(100):
+            report = self._get_json(
+                resource_path, [*query_params, ("paging-first", first), ("paging-count", 500)], path_params
+            )
+            page = report.get("values") or []
+            paging = report.get("paging") or {}
+            count = paging.get("matches")
+            if matches is not None and count is not None and count != matches:
+                raise DataError(f"{label.capitalize()} count changed while paging. {hint}")
+            if count is not None:
+                matches = count
+            ids = {row[id_key] for row in page if row.get(id_key)}
+            # Rows without ids can only be recognised as repeated by their content.
+            page_key = json.dumps(page, sort_keys=True) if page and not ids else None
+            if (paging.get("index") is not None and paging["index"] != first) or (
+                first and (page_key in seen_pages or ids & seen_ids)
+            ):
+                raise DataError(f"Bank returned an incomplete {label} list: paging did not advance. {hint}")
+            if page_key is not None:
+                seen_pages.add(page_key)
+            seen_ids.update(ids)
+            rows.extend(page)
+            first += len(page)
+            if matches is None or first >= matches:
+                return rows
+            if not page:
+                raise DataError(f"Bank returned an incomplete {label} list: an expected page is empty. {hint}")
+        raise DataError(f"{label.capitalize()} paging exceeded 100 pages. {hint}")
+
     def get_wealth_overview(self) -> WealthOverview:
         """All product balances and the bank's EUR aggregates, without currency conversion or sign changes."""
         return map_wealth_overview(self._get_json("/reports/participants/user/v1/allbalances", []))
@@ -455,42 +499,14 @@ class ComdirectClient:
             )
             if value is not None
         ]
-        rows: list[dict[str, Any]] = []
-        first = 0
-        matches = None
-        seen: set[str] = set()
-        seen_ids: set[str] = set()
-        for _ in range(100):
-            report = self._get_json(
-                "/brokerage/depots/{depotId}/v3/orders",
-                [("with-attr", "instrument"), *filters, ("paging-first", first), ("paging-count", 500)],
-                {"depotId": depot_id},
-            )
-            page = report.get("values") or []
-            paging = report.get("paging") or {}
-            count = paging.get("matches")
-            if matches is not None and count is not None and count != matches:
-                raise DataError("Order count changed while paging. Narrow the filters and try again.")
-            if count is not None:
-                matches = count
-            key = json.dumps(page, sort_keys=True)
-            ids = {row["orderId"] for row in page if row.get("orderId")}
-            if (paging.get("index") is not None and paging["index"] != first) or (
-                first and (key in seen or ids & seen_ids)
-            ):
-                raise DataError("Bank returned an incomplete order list: paging did not advance. Narrow the filters.")
-            seen.add(key)
-            seen_ids.update(ids)
-            rows.extend(page)
-            first += len(page)
-            if matches is None or first >= matches:
-                break
-            if not page:
-                raise DataError(
-                    "Bank returned an incomplete order list: an expected page is empty. Narrow the filters."
-                )
-        else:
-            raise DataError("Order paging exceeded 100 pages. Narrow the filters.")
+        rows = self._get_all_pages(
+            "/brokerage/depots/{depotId}/v3/orders",
+            [("with-attr", "instrument"), *filters],
+            {"depotId": depot_id},
+            id_key="orderId",
+            label="order",
+            hint="Narrow the filters.",
+        )
         return [map_order(row) for row in rows if all(row.get(key) == value for key, value in filters)]
 
     def get_order(self, order_id: str) -> Order:
@@ -512,39 +528,14 @@ class ComdirectClient:
             query.append(("isin", isin))
         if max_booking_date:
             query.append(("max-bookingDate", max_booking_date.isoformat()))
-        values: list[dict[str, Any]] = []
-        first = 0
-        seen_pages: set[str] = set()
-        seen_ids: set[str] = set()
-        matches: int | None = None
-        for _ in range(100):
-            report = self._get_json(
-                "/brokerage/v3/depots/{depotId}/transactions",
-                [*query, ("paging-first", first), ("paging-count", 500)],
-                {"depotId": depot_id},
-            )
-            page = report.get("values") or []
-            paging = report.get("paging") or {}
-            reported_matches = paging.get("matches")
-            if reported_matches is not None:
-                if matches is not None and matches != reported_matches:
-                    raise DataError("Depot transaction count changed while paging. Narrow the ISIN/date range.")
-                matches = reported_matches
-            index = paging.get("index")
-            page_key = json.dumps(page, sort_keys=True)
-            ids = {tx["transactionId"] for tx in page if tx.get("transactionId")}
-            if (index is not None and index != first) or (first and (page_key in seen_pages or seen_ids & ids)):
-                raise DataError("Bank returned an incomplete depot transaction list: paging did not advance.")
-            seen_pages.add(page_key)
-            seen_ids.update(ids)
-            values.extend(page)
-            first += len(page)
-            if matches is None or first >= matches:
-                break
-            if not page:
-                raise DataError("Bank returned an incomplete depot transaction list: an expected page is empty.")
-        else:
-            raise DataError("Depot transaction paging exceeded 100 pages. Narrow the ISIN/date range.")
+        values = self._get_all_pages(
+            "/brokerage/v3/depots/{depotId}/transactions",
+            query,
+            {"depotId": depot_id},
+            id_key="transactionId",
+            label="depot transaction",
+            hint="Narrow the ISIN/date range.",
+        )
         transactions = [map_depot_transaction(tx, depot_id) for tx in values]
         selected = []
         for tx in transactions:
@@ -613,19 +604,10 @@ class ComdirectClient:
 
     def get_document_cover(self, document_id: str) -> bytes:
         """Read the HTML pre-document without loading links or executing active content."""
-        method, url, headers, body, posts = self._api_client.param_serialize(
-            method="GET",
-            resource_path="/messages/v2/documents/{documentId}/predocument",
-            path_params={"documentId": document_id},
-            query_params=[],
-            header_params={"Accept": "text/html"},
-            auth_settings=[],
+        response = self._messages.messages_v2_get_predocument_with_http_info(
+            document_id, _headers={"Accept": "text/html"}
         )
-        response = self._api_client.call_api(method, url, header_params=headers, body=body, post_params=posts)
-        response.read()
-        if not 200 <= response.status < 300:
-            raise ApiException(http_resp=response)
-        return response.data or b""
+        return response.raw_data or b""
 
     def logout(self):
         """

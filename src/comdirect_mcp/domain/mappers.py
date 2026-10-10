@@ -2,6 +2,7 @@ import re
 from datetime import date
 from decimal import Decimal
 
+from ..exceptions import DataError
 from .models import (
     Account,
     AccountHolder,
@@ -37,8 +38,15 @@ def _get_val(obj, attr_name, key_name=None):
 
 def _to_decimal(amount_value) -> Decimal | None:
     """Helper to convert AmountValue (obj or dict) to Decimal; None if the value is missing."""
-    val = _get_val(amount_value, "value")
-    return Decimal(val) if val not in (None, "") else None
+    return _decimal_string(_get_val(amount_value, "value"))
+
+
+def _decimal_string(value) -> Decimal | None:
+    return Decimal(value) if value not in (None, "") else None
+
+
+def _opt_tuple(data: dict, key: str) -> tuple | None:
+    return tuple(data[key]) if data.get(key) is not None else None
 
 
 def _to_unit(amount_value) -> str | None:
@@ -278,10 +286,6 @@ def map_depot_transaction(tx: dict, depot_id: str) -> DepotTransaction:
     )
 
 
-def _decimal_string(value) -> Decimal | None:
-    return Decimal(value) if value not in (None, "") else None
-
-
 def map_instrument(value: dict) -> Instrument:
     static = value.get("staticData") or {}
     fund = value.get("fundsDistribution")
@@ -291,7 +295,7 @@ def map_instrument(value: dict) -> Instrument:
         rating = fund.get("rating") or {}
         fund_details = FundDetails(
             status=fund.get("fundStatus"),
-            flags=tuple(fund["fundFlags"]) if fund.get("fundFlags") is not None else None,
+            flags=_opt_tuple(fund, "fundFlags"),
             currency=fund.get("currency"),
             investment_category=fund.get("investmentCategory"),
             total_expense_ratio=_decimal_string(fund.get("totalExpenseRatio")),
@@ -371,19 +375,15 @@ def map_dimensions(value: dict) -> OrderDimensions:
                 name=v.get("name"),
                 country=v.get("country"),
                 type=v.get("type"),
-                currencies=tuple(v["currencies"]) if v.get("currencies") is not None else None,
-                sides=tuple(v["sides"]) if v.get("sides") is not None else None,
-                validity_types=tuple(v["validityTypes"]) if v.get("validityTypes") is not None else None,
+                currencies=_opt_tuple(v, "currencies"),
+                sides=_opt_tuple(v, "sides"),
+                validity_types=_opt_tuple(v, "validityTypes"),
                 order_types=tuple(
                     (
                         name,
                         OrderTypeDetails(
-                            limit_extensions=tuple(details["limitExtensions"])
-                            if details.get("limitExtensions") is not None
-                            else None,
-                            trading_restrictions=tuple(details["tradingRestrictions"])
-                            if details.get("tradingRestrictions") is not None
-                            else None,
+                            limit_extensions=_opt_tuple(details, "limitExtensions"),
+                            trading_restrictions=_opt_tuple(details, "tradingRestrictions"),
                         ),
                     )
                     for name, details in (v.get("orderTypes") or {}).items()
@@ -397,8 +397,6 @@ def map_dimensions(value: dict) -> OrderDimensions:
 
 
 def map_order(value: dict, depth: int = 0) -> Order:
-    from ..exceptions import DataError
-
     if depth > 8:
         raise DataError("Order nesting exceeds the supported depth; request individual order details.")
     instrument = value.get("instrument") or {}

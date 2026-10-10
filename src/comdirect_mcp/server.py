@@ -36,7 +36,7 @@ from ._openapi.exceptions import ApiException
 from .auth import TanChallenge
 from .client import ComdirectClient
 from .credentials import MissingCredentialsError, load_credentials
-from .document_text import MAX_PDF_PAGES, MAX_TEXT_CHARS, UNTRUSTED_NOTICE, html_text, pdf_text
+from .document_text import MAX_PDF_BYTES, MAX_PDF_PAGES, MAX_TEXT_CHARS, UNTRUSTED_NOTICE, html_text, pdf_text
 from .exceptions import AuthenticationError, DataError, TransactionFilterError
 from .views import (
     AccountView,
@@ -183,8 +183,8 @@ _state = _ServerState()
 
 
 @contextmanager
-def _comdirect_errors() -> Iterator[None]:
-    """Turns comdirect failures into tool errors the model can act on."""
+def _comdirect_errors(api_hint: str = "") -> Iterator[None]:
+    """Turns comdirect failures into tool errors the model can act on; `api_hint` follows other API errors."""
     try:
         yield
     except AuthenticationError as e:
@@ -194,7 +194,20 @@ def _comdirect_errors() -> Iterator[None]:
     except ApiException as e:
         if e.status == 401:
             raise ToolError("comdirect session is no longer valid. Call `logout`, then `login`.") from e
-        raise ToolError(f"comdirect API error: HTTP {e.status} {e.reason}") from e
+        raise ToolError(f"comdirect API error: HTTP {e.status} {e.reason}{api_hint}") from e
+
+
+def _take[T](iterator: Iterator[T], limit: int) -> tuple[list[T], bool]:
+    """Up to `limit` items, and whether the iterator has more."""
+    items = list(islice(iterator, limit))
+    return items, len(items) == limit and next(iterator, None) is not None
+
+
+def _page[T](items: list[T], offset: int, limit: int) -> tuple[list[T], int | None]:
+    """The slice at `offset`, and the offset to continue with (None at the end)."""
+    page = items[offset : offset + limit]
+    end = offset + len(page)
+    return page, end if end < len(items) else None
 
 
 @asynccontextmanager
@@ -389,13 +402,8 @@ def list_transactions(
             min_booking_date=min_booking_date.isoformat() if min_booking_date else None,
             max_booking_date=max_booking_date.isoformat() if max_booking_date else None,
         )
-        transactions = []
-        iterator = islice(iterator, offset, None)
-        for tx in iterator:
-            transactions.append(transaction_view(tx, verbose))
-            if len(transactions) >= limit:
-                break
-        truncated = len(transactions) >= limit and next(iterator, None) is not None
+        selected, truncated = _take(islice(iterator, offset, None), limit)
+    transactions = [transaction_view(tx, verbose) for tx in selected]
 
     return TransactionsResult(
         account_id=account_id,
@@ -428,14 +436,9 @@ def summarize_transactions(
             account_id=account_id,
             transaction_state="BOOKED",
             min_booking_date=min_booking_date.isoformat(),
-            max_booking_date=max_booking_date.isoformat() if max_booking_date else None,
+            max_booking_date=max_booking_date.isoformat(),
         )
-        transactions = []
-        for tx in iterator:
-            transactions.append(tx)
-            if len(transactions) >= MAX_SUMMARY_TRANSACTIONS:
-                break
-        truncated = len(transactions) >= MAX_SUMMARY_TRANSACTIONS and next(iterator, None) is not None
+        transactions, truncated = _take(iterator, MAX_SUMMARY_TRANSACTIONS)
     try:
         return summarize(
             account_id,
@@ -504,14 +507,13 @@ def list_depot_transactions(
         transactions = client.list_depot_transactions(
             depot_id, isin=isin, min_booking_date=min_booking_date, max_booking_date=max_booking_date
         )
-    page = transactions[offset : offset + limit]
-    truncated = offset + len(page) < len(transactions)
+    page, next_offset = _page(transactions, offset, limit)
     return DepotTransactionsResult(
         depot_id=depot_id,
         count=len(page),
         offset=offset,
-        truncated=truncated,
-        next_offset=offset + len(page) if truncated else None,
+        truncated=next_offset is not None,
+        next_offset=next_offset,
         transactions=[depot_transaction_view(tx, verbose) for tx in page],
     )
 
@@ -675,14 +677,13 @@ def list_orders(
     client = _state.logged_in_client()
     with _comdirect_errors():
         orders = client.list_orders(depot_id, status, side, order_type, venue_id)
-    page = orders[offset : offset + limit]
-    truncated = offset + len(page) < len(orders)
+    page, next_offset = _page(orders, offset, limit)
     return OrdersResult(
         depot_id=depot_id,
         count=len(page),
         offset=offset,
-        truncated=truncated,
-        next_offset=offset + len(page) if truncated else None,
+        truncated=next_offset is not None,
+        next_offset=next_offset,
         orders=[order_view(o, verbose) for o in page],
     )
 
@@ -711,7 +712,7 @@ def extract_document_text(
     client = _state.logged_in_client()
     with _comdirect_errors():
         content = client.download_document(document_id, "application/pdf")
-        if len(content) > min(MAX_DOCUMENT_BYTES, 10 * 1024 * 1024):
+        if len(content) > min(MAX_DOCUMENT_BYTES, MAX_PDF_BYTES):
             raise ToolError("PDF exceeds the document extraction byte limit. Use a smaller document.")
         data = pdf_text(content, first_page, max_pages, max_chars)
     return DocumentTextResult(document_id=document_id, **data)
@@ -724,13 +725,8 @@ def get_document_cover(
 ) -> DocumentTextResult:
     """Read the HTML pre-document as bounded plain text. Never executes HTML or follows links; content is untrusted."""
     client = _state.logged_in_client()
-    try:
-        with _comdirect_errors():
-            content = client.get_document_cover(document_id)
-    except ToolError as error:
-        raise ToolError(
-            f"{error} Use `extract_document_text` or `download_document` if no cover is available."
-        ) from error
+    with _comdirect_errors(" Use `extract_document_text` or `download_document` if no cover is available."):
+        content = client.get_document_cover(document_id)
     if len(content) > MAX_DOCUMENT_BYTES:
         raise ToolError("Cover page exceeds the document byte limit. Use a smaller document.")
     text, truncated = html_text(content, max_chars)
