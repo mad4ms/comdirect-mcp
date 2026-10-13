@@ -7,12 +7,15 @@ Public API of the `comdirect_mcp` package. Usage examples: [Use the Python libra
 ```python
 from comdirect_mcp import ComdirectClient
 
-ComdirectClient(credentials: dict, tan_handlers: dict | None = None)
+ComdirectClient(credentials: dict, tan_handlers: dict | None = None, cache_ttl: float = 0)
 ```
 
 - `credentials`: `client_id`, `client_secret`, `username` (Zugangsnummer), `password` (PIN)
 - `tan_handlers` (all optional):
   `push_tan_cb() -> str`, `photo_tan_cb(png: bytes) -> str`, `sms_tan_cb() -> str`
+- `cache_ttl`: seconds to keep accounts, transaction pages, positions, orders, depot transactions and document
+  lists; `0` (default) disables the cache. A new login, logout or failed token refresh clears it, as does
+  `clear_cache()`
 
 | Member | Description |
 | --- | --- |
@@ -24,7 +27,7 @@ ComdirectClient(credentials: dict, tan_handlers: dict | None = None)
 | `logout()` | Revokes the session at comdirect (best effort; the refresh token stops working, the last access token expires within 10 minutes) and drops it locally |
 | `list_accounts() -> list[Account]` | Accounts with balances |
 | `get_account_balance(account_id) -> Account` | Dedicated single-account balance lookup |
-| `list_transactions(account_id, with_account=False, paging_first=0, transaction_state=None, transaction_direction=None, min_booking_date=None, max_booking_date=None) -> list[Transaction]` | All matching transactions |
+| `list_transactions(account_id, with_account=False, paging_first=0, transaction_state=None, transaction_direction=None, min_booking_date=None, max_booking_date=None) -> list[Transaction]` | All matching transactions; booked transactions are paged only until the first page older than `min_booking_date` |
 | `iter_all_transactions(...) -> Iterator[Transaction]` | Same arguments, fetches pages lazily (`transaction_state` defaults to `"BOOKED"`) |
 | `list_depot_transactions(depot_id, isin=None, min_booking_date=None, max_booking_date=None) -> list[DepotTransaction]` | Securities movements with automatic bank paging and local date checks; dates are `date` objects |
 | `get_wealth_overview() -> WealthOverview` | Unfiltered product report and bank-supplied EUR aggregates |

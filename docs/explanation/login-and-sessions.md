@@ -42,6 +42,10 @@ sequenceDiagram
 - **Fallback.** Clients without elicitation support get a fixed approval window
   (`COMDIRECT_MCP_PUSH_TAN_WAIT`, default 30 s). There is no way to ask comdirect whether the push was approved,
   so the server cannot poll; confirming too early makes the confirmation fail.
+- **Clients that decline without asking.** Some clients declare elicitation but decline or cancel the dialog within
+  milliseconds without showing it (Claude Code 2.1.296). An answer faster than one second cannot come from a person
+  who read the dialog, so the server treats it like a missing dialog and uses the approval window. A decline after
+  that, or a form submitted without ticking *Freigegeben*, stops the login.
 - **The TAN never reaches the model.** The dialog is between client and user; the model only sees the tool result.
 - **Push is requested explicitly.** The challenge request asks for `P_TAN_PUSH`, and the confirmation omits the
   TAN header as the API documentation specifies for push approvals.

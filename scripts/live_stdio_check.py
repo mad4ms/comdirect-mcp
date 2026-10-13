@@ -28,6 +28,7 @@ EXPECTED = {
     "list_accounts",
     "list_transactions",
     "summarize_transactions",
+    "find_recurring_payments",
     "list_cards",
     "list_depots",
     "get_depot_positions",
@@ -35,17 +36,12 @@ EXPECTED = {
     "list_depot_transactions",
     "get_wealth_overview",
     "get_instrument",
-    "download_document",
-    "get_account_balance",
-    "get_depot_position",
     "summarize_portfolio",
-    "get_order_dimensions",
     "list_orders",
     "get_order",
-    "get_document_cover",
-    "extract_document_text",
+    "read_document",
 }
-READS = EXPECTED - {"login", "logout", "download_document", "get_document_cover", "extract_document_text"}
+READS = EXPECTED - {"login", "logout", "read_document"}
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--server-command", default=COMMAND, help="Installed comdirect-mcp executable to test")
 parser.add_argument(
@@ -204,10 +200,8 @@ async def catalog(client, label):
     tools = {t.name: t for t in (await client.list_tools()).tools}
     check(label + ": expected tool catalog", set(tools) == EXPECTED)
     check(label + ": input schemas for all tools", all(t.input_schema for t in tools.values()))
-    check(
-        label + ": output schemas on all structured tools",
-        all(t.output_schema for n, t in tools.items() if n != "download_document"),
-    )
+    check(label + ": output schemas on all tools", all(t.output_schema for t in tools.values()))
+    check(label + ": titles on all tools", all(t.title for t in tools.values()))
     check(
         label + ": truthful read-only annotations",
         all(tools[n].annotations.read_only_hint is (n in READS) for n in EXPECTED),
@@ -225,6 +219,8 @@ async def offline():
                     ("list_accounts", {}),
                     ("list_transactions", {"account_id": "synthetic"}),
                     ("summarize_transactions", {"account_id": "synthetic", "min_booking_date": "2026-01-01"}),
+                    ("summarize_transactions", {"min_booking_date": "2026-01-01"}),
+                    ("find_recurring_payments", {}),
                     ("list_cards", {}),
                     ("list_depots", {}),
                     ("get_depot_positions", {"depot_id": "synthetic"}),
@@ -232,15 +228,11 @@ async def offline():
                     ("list_depot_transactions", {"depot_id": "synthetic"}),
                     ("get_wealth_overview", {}),
                     ("get_instrument", {"identifier": "synthetic"}),
-                    ("download_document", {"document_id": "synthetic", "mime_type": "application/pdf"}),
-                    ("get_account_balance", {"account_id": "synthetic"}),
-                    ("get_depot_position", {"depot_id": "synthetic", "position_id": "synthetic"}),
                     ("summarize_portfolio", {"depot_id": "synthetic"}),
-                    ("get_order_dimensions", {"identifier": "synthetic"}),
                     ("list_orders", {"depot_id": "synthetic"}),
                     ("get_order", {"order_id": "synthetic"}),
-                    ("get_document_cover", {"document_id": "synthetic"}),
-                    ("extract_document_text", {"document_id": "synthetic"}),
+                    ("read_document", {"document_id": "synthetic"}),
+                    ("read_document", {"document_id": "synthetic", "format": "file"}),
                 ):
                     await invoke(client, name, args, error=True)
                 await invoke(client, "logout")
@@ -286,12 +278,6 @@ async def live():
                     if not account_id:
                         check("accounts: actionable identifier available", False)
                         continue
-                    single = await invoke(client, "get_account_balance", {"account_id": account_id})
-                    if single:
-                        check(
-                            "single account: identity and currency agree",
-                            single.get("id") == account_id and single.get("currency") == account.get("currency"),
-                        )
                     args = {"account_id": account_id, "min_booking_date": since, "max_booking_date": end, "limit": 250}
                     txdata = await invoke(client, "list_transactions", args)
                     verbose = await invoke(client, "list_transactions", {**args, "verbose": True})
@@ -553,21 +539,17 @@ async def live():
                             )
                             if detailed:
                                 for holding in detailed["positions"]:
-                                    if holding.get("position_id"):
+                                    if holding.get("isin"):
                                         one = await invoke(
                                             client,
-                                            "get_depot_position",
-                                            {
-                                                "depot_id": depot["id"],
-                                                "position_id": holding["position_id"],
-                                                "verbose": True,
-                                            },
+                                            "get_depot_positions",
+                                            {"depot_id": depot["id"], "isin": holding["isin"], "verbose": True},
                                         )
                                         if one:
                                             check(
-                                                "single position: identity and quantity agree",
-                                                one.get("position_id") == holding["position_id"]
-                                                and one.get("quantity") == holding.get("quantity"),
+                                                "position filter: only the requested security",
+                                                all(p.get("isin") == holding["isin"] for p in one["positions"])
+                                                and holding in one["positions"],
                                             )
                                 check(
                                     "positions: compact equals subset of verbose",
@@ -593,7 +575,6 @@ async def live():
                                 security_details = await invoke(
                                     client, "get_instrument", {"identifier": identifier, "verbose": True}
                                 )
-                                await invoke(client, "get_order_dimensions", {"identifier": identifier})
                                 await invoke(
                                     client,
                                     "get_instrument",
@@ -642,7 +623,8 @@ async def live():
                                                 + Decimal(group["omitted_weight_percent"])
                                                 - 100
                                             )
-                                            < Decimal("0.00000001"),
+                                            # each weight is rounded to 0.01
+                                            <= Decimal("0.005") * (len(group["positions"]) + 1),
                                         )
                             check(
                                 "positions: no unresolved special units",
@@ -658,16 +640,16 @@ async def live():
                                 + str(sum("instrument_name" not in p for p in positions["positions"])),
                                 flush=True,
                             )
-                docs = await invoke(client, "list_documents", {"paging_count": 10})
-                next_docs = await invoke(client, "list_documents", {"paging_first": 10, "paging_count": 1})
+                docs = await invoke(client, "list_documents", {"limit": 10})
+                next_docs = await invoke(client, "list_documents", {"offset": 10, "limit": 1})
                 if docs and next_docs:
                     check(
                         "documents: continuation agrees with next page",
-                        docs["has_more"] == bool(next_docs["documents"]),
+                        docs["truncated"] == bool(next_docs["documents"]),
                     )
                     check(
-                        "documents: next index matches page",
-                        docs.get("next_index") == (10 if docs["has_more"] else None),
+                        "documents: next offset matches page",
+                        docs.get("next_offset") == (10 if docs["truncated"] else None),
                     )
                 if docs:
                     check("documents: page bound and count", docs["count"] == len(docs["documents"]) <= 10)
@@ -684,13 +666,13 @@ async def live():
                     if pdf:
                         await invoke(
                             client,
-                            "get_document_cover",
-                            {"document_id": pdf["document_id"], "max_chars": 500},
+                            "read_document",
+                            {"document_id": pdf["document_id"], "format": "cover", "max_chars": 500},
                             allow_missing=True,
                         )
                         text = await invoke(
                             client,
-                            "extract_document_text",
+                            "read_document",
                             {"document_id": pdf["document_id"], "max_pages": 1, "max_chars": 500},
                         )
                         if text:
@@ -703,7 +685,7 @@ async def live():
                             if text.get("next_page") is not None:
                                 await invoke(
                                     client,
-                                    "extract_document_text",
+                                    "read_document",
                                     {
                                         "document_id": pdf["document_id"],
                                         "first_page": text["next_page"],
@@ -712,21 +694,20 @@ async def live():
                                     },
                                 )
                         result = await invoke(
-                            client,
-                            "download_document",
-                            {"document_id": pdf["document_id"], "mime_type": "application/pdf"},
+                            client, "read_document", {"document_id": pdf["document_id"], "format": "file"}
                         )
                         if result:
-                            resource = result.content[0].resource
+                            uri = "comdirect://documents/" + pdf["document_id"]
+                            resource = (await client.read_resource(uri)).contents[0]
                             blob = base64.b64decode(resource.blob, validate=True)
                             check(
-                                "download: PDF resource, URI and size",
-                                resource.mime_type == "application/pdf"
-                                and resource.uri == "comdirect://documents/" + pdf["document_id"]
+                                "document file: linked PDF resource and size",
+                                result.get("resource_uri") == uri
+                                and resource.mime_type == "application/pdf"
                                 and blob.startswith(b"%PDF")
                                 and len(blob) <= 10 * 1024 * 1024,
                             )
-                            del blob, result
+                            del blob, resource
                     else:
                         print("SKIP download: no already-read PDF in page", flush=True)
                 for name, args in (
@@ -742,10 +723,10 @@ async def live():
                         "summarize_transactions",
                         {"account_id": "synthetic", "min_booking_date": since, "max_groups": 1},
                     ),
-                    ("list_documents", {"paging_first": -1}),
-                    ("list_documents", {"paging_count": 1001}),
+                    ("list_documents", {"offset": -1}),
+                    ("list_documents", {"limit": 1001}),
                     ("get_depot_positions", {}),
-                    ("download_document", {}),
+                    ("read_document", {}),
                 ):
                     await invoke(client, name, args, error=True)
                 if options.refresh_wait:
@@ -867,9 +848,31 @@ async def remaining_live():
                     return
                 check("login: exactly one approval", elicitations == 1)
                 accounts = await invoke(client, "list_accounts")
-                for account in (accounts or {}).get("accounts", []):
-                    if account.get("id"):
-                        await invoke(client, "get_account_balance", {"account_id": account["id"]})
+                eur = [a["id"] for a in (accounts or {}).get("accounts", []) if a.get("currency") == "EUR"]
+                since = (date.today() - timedelta(days=30)).isoformat()
+                combined = await invoke(client, "summarize_transactions", {"min_booking_date": since})
+                gross = await invoke(
+                    client, "summarize_transactions", {"min_booking_date": since, "include_internal": True}
+                )
+                recurring = await invoke(client, "find_recurring_payments", {})
+                if recurring:
+                    active = [p for p in recurring["payments"] if not p.get("ended")]
+                    check(
+                        "recurring: yearly total matches active payments",
+                        recurring["payments_truncated"]
+                        or sum((Decimal(p["yearly_cost"]) for p in active), Decimal(0))
+                        == Decimal(recurring["yearly_cost"]),
+                    )
+                    print("INFO recurring payments=" + str(recurring["count"]), flush=True)
+                if combined and gross:
+                    internal = combined.get("internal_transfers")
+                    check("all-account summary: every EUR account", combined["account_ids"] == eur)
+                    check(
+                        "all-account summary: internal transfers conserve totals",
+                        combined["count"] + (internal["count"] if internal else 0) == gross["count"]
+                        and Decimal(combined["net"]) + Decimal(internal["net"] if internal else 0)
+                        == Decimal(gross["net"]),
+                    )
                 depots = await invoke(client, "list_depots")
                 seen = set()
                 for depot in (depots or {}).get("depots", []):
@@ -878,35 +881,17 @@ async def remaining_live():
                         continue
                     data = await invoke(client, "get_depot_positions", {"depot_id": depot_id, "verbose": True})
                     for position in (data or {}).get("positions", []):
-                        if position.get("position_id"):
-                            one = await invoke(
-                                client,
-                                "get_depot_position",
-                                {"depot_id": depot_id, "position_id": position["position_id"], "verbose": True},
-                            )
-                            if one:
-                                check(
-                                    "single position: identity and quantity agree",
-                                    one.get("position_id") == position["position_id"]
-                                    and one.get("quantity") == position.get("quantity"),
-                                )
                         identifier = position.get("isin") or position.get("wkn")
                         if identifier and identifier not in seen:
                             seen.add(identifier)
-                            dimensions = await invoke(client, "get_order_dimensions", {"identifier": identifier})
                             embedded = await invoke(
                                 client, "get_instrument", {"identifier": identifier, "include_order_dimensions": True}
                             )
+                            dimensions = (embedded or {}).get("order_dimensions")
                             if dimensions:
                                 check(
                                     "dimensions: count matches venue list",
                                     dimensions.get("count") == len(dimensions.get("venues", [])),
-                                )
-                            if dimensions and embedded and embedded.get("order_dimensions"):
-                                check(
-                                    "dimensions: venue identities agree with instrument projection",
-                                    {v.get("id") for v in dimensions.get("venues", [])}
-                                    == {v.get("id") for v in embedded["order_dimensions"].get("venues", [])},
                                 )
                     portfolio = await invoke(client, "summarize_portfolio", {"depot_id": depot_id, "limit": 1})
                     if portfolio and data:
@@ -934,7 +919,7 @@ async def remaining_live():
                     else:
                         print("SKIP successful get_order: no existing order id; missing-id error checked", flush=True)
                         await invoke(client, "get_order", {"order_id": "__mcp_live_missing_order__"}, error=True)
-                docs = await invoke(client, "list_documents", {"paging_count": 50})
+                docs = await invoke(client, "list_documents", {"limit": 50})
                 read_docs = [
                     d
                     for d in (docs or {}).get("documents", [])
@@ -944,15 +929,15 @@ async def remaining_live():
                 for document in read_docs[:2]:
                     await invoke(
                         client,
-                        "get_document_cover",
-                        {"document_id": document["document_id"], "max_chars": 500},
+                        "read_document",
+                        {"document_id": document["document_id"], "format": "cover", "max_chars": 500},
                         allow_missing=True,
                     )
                 pdf = next((d for d in read_docs if d.get("mime_type") == "application/pdf"), None)
                 if pdf:
                     text = await invoke(
                         client,
-                        "extract_document_text",
+                        "read_document",
                         {"document_id": pdf["document_id"], "max_pages": 1, "max_chars": 500},
                     )
                     if text:

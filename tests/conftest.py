@@ -31,3 +31,11 @@ def memory_keyring():
     keyring.set_keyring(backend)
     yield backend
     keyring.set_keyring(previous)
+
+
+@pytest.fixture(autouse=True)
+def categories_file(tmp_path, monkeypatch):
+    """Points the category rules to a temporary file (not created), never to the user's real config."""
+    path = tmp_path / "categories.toml"
+    monkeypatch.setenv("COMDIRECT_MCP_CATEGORIES", str(path))
+    return path

@@ -110,6 +110,21 @@ wait. Live approval is manual by default: approve the current photoTAN request, 
 the checker terminal, or enter `cancel` to decline. The client allows up to 300 seconds for this interaction.
 For an explicitly timed check use `--no-manual-approval --wait 60`. There is no login retry.
 
+## Tool choice eval
+
+Tests check that the tools work, not that a model picks the right one. `scripts/tool_choice_eval.py` sends a
+dozen typical questions ("Was habe ich im September ausgegeben?") with the real tool catalog and server
+instructions to Claude and checks the first tool call against the expected tools. No banking login is involved;
+it needs Anthropic API credentials and costs a few cents per run.
+
+```bash
+uv run --with anthropic python scripts/tool_choice_eval.py                 # claude-opus-5-5, effort low
+uv run --with anthropic python scripts/tool_choice_eval.py --effort medium
+```
+
+Run it after changing tool names, descriptions, parameters or the server instructions, and add a case when a
+model picked the wrong tool in practice.
+
 ## Running the server locally
 
 ```bash

@@ -91,6 +91,7 @@ class TestComdirectClient(unittest.TestCase):
         mock_tx1.remittance_info = "Test Tx"
         mock_tx1.valuta_date = None
         mock_tx1.new_transaction = False
+        mock_tx1.remitter = mock_tx1.deptor = mock_tx1.creditor = None
 
         mock_response_data = MagicMock()
         mock_response_data.values = [mock_tx1]
@@ -311,3 +312,64 @@ def test_local_date_filter_continues_paging_past_nonmatching_page():
     assert len(transactions) == 1
     assert transactions[0].booking_date.isoformat() == "2026-10-08"
     assert [call.kwargs["paging_first"] for call in transport.call_args_list] == [0, 1, 2]
+
+
+def _pages(*dates_per_page):
+    from types import SimpleNamespace
+
+    from comdirect_mcp._openapi.models.account_transaction import AccountTransaction
+
+    return [
+        SimpleNamespace(values=[AccountTransaction(booking_date=d) for d in dates]) for dates in dates_per_page
+    ] + [SimpleNamespace(values=[])]
+
+
+def _client(**kwargs):
+    return ComdirectClient({"client_id": "c", "client_secret": "s", "username": "u", "password": "p"}, **kwargs)
+
+
+def test_paging_stops_at_the_first_page_older_than_the_date_filter():
+    client = _client()
+    pages = _pages(["2026-10-09", "2026-10-01"], ["2026-09-30", "2026-09-29"], ["2026-09-01"])
+    with patch.object(client, "_get_account_transactions_page", side_effect=pages) as transport:
+        transactions = client.list_transactions("synthetic", min_booking_date="2026-10-01")
+    assert [tx.booking_date.isoformat() for tx in transactions] == ["2026-10-09", "2026-10-01"]
+    assert transport.call_count == 2
+
+
+def test_paging_reads_everything_when_the_bank_does_not_sort_newest_first():
+    client = _client()
+    pages = _pages(["2026-09-01", "2026-10-09"], ["2026-09-02"], ["2026-10-05"])
+    with patch.object(client, "_get_account_transactions_page", side_effect=pages) as transport:
+        transactions = client.list_transactions("synthetic", min_booking_date="2026-10-01")
+    assert [tx.booking_date.isoformat() for tx in transactions] == ["2026-10-09", "2026-10-05"]
+    assert transport.call_count == 4
+
+
+def test_cache_reuses_pages_within_the_ttl_and_is_cleared_on_logout():
+    client = _client(cache_ttl=60)
+    with patch.object(client, "_get_account_transactions_page", side_effect=_pages(["2026-10-09"]) * 2) as transport:
+        first = client.list_transactions("synthetic")
+        second = client.list_transactions("synthetic")
+        assert first == second
+        assert transport.call_count == 2
+        client.logout()
+        client.list_transactions("synthetic")
+        assert transport.call_count == 4
+
+
+def test_cache_is_off_by_default_and_expires():
+    client = _client()
+    with patch.object(client, "_get_account_transactions_page", side_effect=_pages(["2026-10-09"]) * 2) as transport:
+        client.list_transactions("synthetic")
+        client.list_transactions("synthetic")
+    assert transport.call_count == 4
+
+    client = _client(cache_ttl=60)
+    with (
+        patch.object(client, "_get_account_transactions_page", side_effect=_pages(["2026-10-09"]) * 2) as transport,
+        patch("comdirect_mcp.client.time.monotonic", side_effect=[0, 0, 100, 100]),
+    ):
+        client.list_transactions("synthetic")
+        client.list_transactions("synthetic")
+    assert transport.call_count == 4

@@ -56,6 +56,8 @@ class Transaction:
     counterparty: AccountHolder | None = None
     direction: str | None = None  # "in" or "out"
     purpose_raw: str | None = None  # remittanceInfo as delivered by the API
+    # Payment service between the user and the counterparty, e.g. "PayPal"; `counterparty` is then the merchant
+    via: str | None = None
 
 
 @dataclass(frozen=True)

@@ -12,7 +12,7 @@ Where you get the values: [Get comdirect API access](get-comdirect-api-access.md
 ## Recommended: OS keychain
 
 ```bash
-uvx comdirect-mcp@0.5.1 configure     # or: comdirect-mcp configure
+uvx comdirect-mcp@0.6.0 configure     # or: comdirect-mcp configure
 ```
 
 - Prompts for the four values; Client Secret and PIN are not echoed.
@@ -23,7 +23,7 @@ uvx comdirect-mcp@0.5.1 configure     # or: comdirect-mcp configure
 Remove them again:
 
 ```bash
-uvx comdirect-mcp@0.5.1 configure --delete
+uvx comdirect-mcp@0.6.0 configure --delete
 ```
 
 On macOS, the Keychain may ask once whether the Python interpreter may read the entries; choose *Always Allow*.
@@ -43,7 +43,7 @@ VS Code can prompt for secrets and keep them in its secure storage instead of `m
     "comdirect": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["comdirect-mcp@0.5.1"],
+      "args": ["comdirect-mcp@0.6.0"],
       "env": {
         "COMDIRECT_CLIENT_ID": "User_...",
         "COMDIRECT_USERNAME": "...",

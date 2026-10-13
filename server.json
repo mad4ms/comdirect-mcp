@@ -3,7 +3,7 @@
   "name": "io.github.mad4ms/comdirect-mcp",
   "title": "comdirect",
   "description": "Read-only access to comdirect accounts, transactions, depots, orders and postbox documents.",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "websiteUrl": "https://github.com/mad4ms/comdirect-mcp",
   "repository": {
     "url": "https://github.com/mad4ms/comdirect-mcp",
@@ -13,7 +13,7 @@
     {
       "registryType": "pypi",
       "identifier": "comdirect-mcp",
-      "version": "0.5.1",
+      "version": "0.6.0",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
@@ -61,6 +61,34 @@
         {
           "name": "COMDIRECT_ENV_FILE",
           "description": "Path to a dotenv file with the credentials (opt-in; prefer the OS keychain)"
+        },
+        {
+          "name": "COMDIRECT_MCP_CACHE_TTL",
+          "description": "Seconds the server keeps bank results within a session; 0 disables the cache",
+          "default": "60"
+        },
+        {
+          "name": "COMDIRECT_MCP_MAX_DOCUMENT_BYTES",
+          "description": "Size limit for postbox documents in bytes",
+          "default": "10485760"
+        },
+        {
+          "name": "COMDIRECT_MCP_CATEGORIES",
+          "description": "Path of the category rules file (default ~/.config/comdirect-mcp/categories.toml)"
+        },
+        {
+          "name": "COMDIRECT_MCP_SKIP_ELICITATION",
+          "description": "Set to 1 to skip the login confirmation dialog and wait for the push TAN approval instead",
+          "default": "false"
+        },
+        {
+          "name": "COMDIRECT_MCP_LOG_FILE",
+          "description": "File the server appends its log to (default stderr)"
+        },
+        {
+          "name": "COMDIRECT_MCP_LOG_LEVEL",
+          "description": "Log level of the server",
+          "default": "INFO"
         }
       ]
     }

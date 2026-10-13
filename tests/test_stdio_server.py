@@ -30,7 +30,7 @@ async def test_all_tools_through_stdio_with_fake_bank(mode):
     )
     async with Client(command, mode=mode, elicitation_callback=approve) as client:
         tools = {tool.name for tool in (await client.list_tools()).tools}
-        assert len(tools) == 21
+        assert len(tools) == 17
         assert (await client.call_tool("list_accounts")).is_error
         assert not (await client.call_tool("login")).is_error
         assert approvals == 1
@@ -39,8 +39,6 @@ async def test_all_tools_through_stdio_with_fake_bank(mode):
         accounts = await client.call_tool("list_accounts")
         assert not accounts.is_error
         account_id = accounts.structured_content["accounts"][0]["id"]
-        single = await client.call_tool("get_account_balance", {"account_id": account_id})
-        assert not single.is_error and single.structured_content == accounts.structured_content["accounts"][0]
         for direction, amount in (("INCOMING", "100.00"), ("OUTGOING", "-12.34")):
             result = await client.call_tool(
                 "list_transactions", {"account_id": account_id, "transaction_direction": direction, "verbose": True}
@@ -90,13 +88,12 @@ async def test_all_tools_through_stdio_with_fake_bank(mode):
         assert not (await client.call_tool("list_depots")).is_error
         assert not (await client.call_tool("get_depot_positions", {"depot_id": "dep_1"})).is_error
         for name, args in (
-            ("get_depot_position", {"depot_id": "dep_1", "position_id": "pos_1", "verbose": True}),
+            ("get_depot_positions", {"depot_id": "dep_1", "isin": "DE0001234567", "verbose": True}),
             ("summarize_portfolio", {"depot_id": "dep_1"}),
-            ("get_order_dimensions", {"identifier": "DE0001234567"}),
             ("list_orders", {"depot_id": "dep_1", "limit": 1}),
             ("get_order", {"order_id": "order_1", "verbose": True}),
-            ("get_document_cover", {"document_id": "doc_1"}),
-            ("extract_document_text", {"document_id": "doc_1", "max_pages": 1}),
+            ("read_document", {"document_id": "doc_1", "format": "cover"}),
+            ("read_document", {"document_id": "doc_1", "max_pages": 1}),
         ):
             result = await client.call_tool(name, args)
             assert not result.is_error, name
@@ -105,13 +102,14 @@ async def test_all_tools_through_stdio_with_fake_bank(mode):
             "get_instrument", {"identifier": "DE0001234567", "verbose": True, "include_order_dimensions": True}
         )
         assert not security.is_error and security.structured_content["order_dimensions"]["count"] == 1
-        docs = await client.call_tool("list_documents", {"paging_count": 1})
+        docs = await client.call_tool("list_documents", {"limit": 1})
         assert not docs.is_error
-        assert docs.structured_content["has_more"] is False
-        assert "next_index" not in docs.structured_content
-        result = await client.call_tool("download_document", {"document_id": "doc_1", "mime_type": "application/pdf"})
+        assert docs.structured_content["truncated"] is False
+        assert "next_offset" not in docs.structured_content
+        result = await client.call_tool("read_document", {"document_id": "doc_1", "format": "file"})
         assert not result.is_error
-        assert base64.b64decode(result.content[0].resource.blob).startswith(b"%PDF")
+        contents = (await client.read_resource(result.structured_content["resource_uri"])).contents
+        assert base64.b64decode(contents[0].blob).startswith(b"%PDF")
         assert (await client.call_tool("list_transactions", {"account_id": account_id, "limit": 0})).is_error
         assert (
             await client.call_tool(

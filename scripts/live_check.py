@@ -264,8 +264,8 @@ async def main() -> None:
                 check("positions have instrument names", all(p.get("instrument_name") for p in positions))
                 check("positions have ISINs", all(p.get("isin") for p in positions))
 
-        print("== list_documents / download_document (already-read PDF only)", flush=True)
-        data = await call(client, "list_documents", {"paging_count": 5})
+        print("== list_documents / read_document file (already-read PDF only)", flush=True)
+        data = await call(client, "list_documents", {"limit": 5})
         documents = data["documents"] if data else []
         print(
             f"  {len(documents)} document(s), types: {sorted({d.get('mime_type', '?') for d in documents})}",
@@ -281,11 +281,10 @@ async def main() -> None:
             None,
         )
         if pdf:
-            result = await call(
-                client, "download_document", {"document_id": pdf["document_id"], "mime_type": "application/pdf"}
-            )
+            result = await call(client, "read_document", {"document_id": pdf["document_id"], "format": "file"})
             if result:
-                content = base64.b64decode(result.content[0].resource.blob)
+                resource = (await client.read_resource(result["resource_uri"])).contents[0]
+                content = base64.b64decode(resource.blob)
                 check(f"PDF signature ({len(content) // 1024} KB, discarded)", content.startswith(b"%PDF"))
                 del content
         else:
