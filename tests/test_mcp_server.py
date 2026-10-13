@@ -1,4 +1,5 @@
 import base64
+import dataclasses
 import logging
 from datetime import date
 from decimal import Decimal
@@ -6,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from mcp.client import Client
+from mcp.shared.exceptions import MCPError
 from mcp.types import ElicitResult
 
 from comdirect_mcp import server as mcp_server
@@ -34,6 +36,8 @@ def comdirect(monkeypatch):
     for key, value in CREDENTIALS.items():
         monkeypatch.setenv(key, value)
     monkeypatch.setattr(mcp_server, "_state", mcp_server._ServerState())
+    # Test callbacks answer at once; treat their answers as coming from a person unless a test says otherwise.
+    monkeypatch.setattr(mcp_server, "INSTANT_ANSWER_SECONDS", 0)
     with patch.object(mcp_server, "ComdirectClient") as client_cls:
         client = client_cls.return_value
         client.is_logged_in = False
@@ -143,6 +147,31 @@ async def test_login_skip_elicitation_waits_instead_of_asking(comdirect, monkeyp
 
     assert not result.is_error, result.content
     comdirect.complete_login.assert_called_once_with(PUSH_CHALLENGE)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("mode", ["auto", "legacy"])
+@pytest.mark.parametrize("answer", [decline, cancel])
+async def test_instant_decline_by_the_client_falls_back_to_the_approval_window(comdirect, monkeypatch, mode, answer):
+    # Claude Code 2.1.296 declares form elicitation but declines within milliseconds, without showing the dialog.
+    monkeypatch.setattr(mcp_server, "INSTANT_ANSWER_SECONDS", 5)
+    monkeypatch.setattr(mcp_server, "PUSH_TAN_FALLBACK_WAIT", 0)
+    async with Client(mcp_server.mcp, mode=mode, elicitation_callback=answer) as client:
+        result = await client.call_tool("login", {})
+
+    assert not result.is_error, result.content
+    comdirect.start_login.assert_called_once_with(tan_type="P_TAN_PUSH")
+    comdirect.complete_login.assert_called_once_with(PUSH_CHALLENGE)
+
+
+@pytest.mark.anyio
+async def test_instant_form_without_approval_is_still_respected(comdirect, monkeypatch):
+    monkeypatch.setattr(mcp_server, "INSTANT_ANSWER_SECONDS", 5)
+    async with Client(mcp_server.mcp, elicitation_callback=approve(False)) as client:
+        result = await client.call_tool("login", {})
+
+    assert result.is_error
+    comdirect.complete_login.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -316,18 +345,55 @@ async def test_list_transactions_rejects_invalid_date(comdirect):
 
 
 @pytest.mark.anyio
-async def test_download_document_returns_embedded_resource(comdirect):
+@pytest.mark.parametrize("mode", ["auto", "legacy"])
+async def test_read_document_file_links_a_resource_instead_of_embedding_it(comdirect, mode):
     comdirect.is_logged_in = True
     mcp_server._state._client = comdirect
     comdirect.download_document.return_value = b"%PDF-1.7"
 
-    async with Client(mcp_server.mcp) as client:
-        result = await client.call_tool("download_document", {"document_id": "doc_1", "mime_type": "application/pdf"})
+    async with Client(mcp_server.mcp, mode=mode) as client:
+        result = await client.call_tool("read_document", {"document_id": "doc_1", "format": "file"})
+        assert not result.is_error, result.content
+        # The tool itself does not download, so the document stays unread until the client reads the link.
+        comdirect.download_document.assert_not_called()
+        link = result.content[1]
+        assert (link.type, str(link.uri)) == ("resource_link", "comdirect://documents/doc_1")
+        assert link.mime_type == "application/pdf"
+        assert result.structured_content["resource_uri"] == "comdirect://documents/doc_1"
 
-    assert not result.is_error, result.content
-    resource = result.content[0].resource
-    assert resource.mime_type == "application/pdf"
-    assert base64.b64decode(resource.blob) == b"%PDF-1.7"
+        contents = (await client.read_resource("comdirect://documents/doc_1")).contents
+    assert base64.b64decode(contents[0].blob) == b"%PDF-1.7"
+    comdirect.download_document.assert_called_once_with("doc_1", "application/pdf")
+
+
+@pytest.mark.anyio
+async def test_document_resource_requires_login(comdirect):
+    async with Client(mcp_server.mcp) as client:
+        with pytest.raises(MCPError, match="login"):
+            await client.read_resource("comdirect://documents/doc_1")
+
+
+@pytest.mark.anyio
+async def test_read_document_uses_listed_mime_type(comdirect):
+    from comdirect_mcp.domain.models import Document
+
+    comdirect.is_logged_in = True
+    mcp_server._state._client = comdirect
+    comdirect.list_documents.side_effect = lambda paging_first, paging_count: (
+        [Document("doc_html", "Info", "2026-01-01", "text/html", False)] if paging_first == 0 else []
+    )
+    comdirect.download_document.return_value = b"<p>Hallo <b>Welt</b></p><script>x()</script>"
+
+    async with Client(mcp_server.mcp) as client:
+        await client.call_tool("list_documents", {})
+        text = await client.call_tool("read_document", {"document_id": "doc_html"})
+        file = await client.call_tool("read_document", {"document_id": "doc_html", "format": "file"})
+
+    assert not text.is_error, text.content
+    assert text.structured_content["text"] == "Hallo Welt"
+    assert "untrusted" in text.structured_content["notice"]
+    comdirect.download_document.assert_called_once_with("doc_html", "text/html")
+    assert file.is_error and "format='text'" in file.content[0].text
 
 
 @pytest.mark.anyio
@@ -408,15 +474,16 @@ async def test_server_shutdown_revokes_the_session(comdirect):
 
 
 @pytest.mark.anyio
-async def test_download_document_is_not_annotated_read_only(comdirect):
+async def test_read_document_is_not_annotated_read_only(comdirect):
     # comdirect marks an unread document as read when it is downloaded (API docs 9.1.2).
     async with Client(mcp_server.mcp) as client:
         tools = {tool.name: tool for tool in (await client.list_tools()).tools}
 
-    assert tools["download_document"].annotations.read_only_hint is False
-    assert tools["download_document"].annotations.destructive_hint is False
+    assert tools["read_document"].annotations.read_only_hint is False
+    assert tools["read_document"].annotations.destructive_hint is False
     for name in ("list_accounts", "list_transactions", "summarize_transactions", "list_cards", "list_documents"):
         assert tools[name].annotations.read_only_hint is True
+    assert all(tool.title for tool in tools.values())
 
 
 @pytest.mark.anyio
@@ -535,12 +602,191 @@ async def test_document_continuation_probes_instead_of_guessing(comdirect, mode)
     ]
     async with Client(mcp_server.mcp, mode=mode) as client:
         for first, count, expected in ((0, 2, True), (2, 1, False), (3, 2, False)):
-            result = await client.call_tool("list_documents", {"paging_first": first, "paging_count": count})
+            result = await client.call_tool("list_documents", {"offset": first, "limit": count})
             assert not result.is_error
             data = result.structured_content
-            assert data["has_more"] is expected
-            assert data["paging_first"] == first
+            assert data["truncated"] is expected
+            assert data["offset"] == first
             if expected:
-                assert data["next_index"] == 2
+                assert data["next_offset"] == 2
             else:
-                assert "next_index" not in data
+                assert "next_offset" not in data
+
+
+OWN_IBAN = "DE02120300000000202051"
+
+
+def _own_accounts():
+    return [
+        Account(id="giro", currency="EUR", balance=None, available=None, iban="DE75512108001245126199"),
+        Account(id="tagesgeld", currency="EUR", balance=None, available=None, iban=OWN_IBAN),
+        Account(id="usd", currency="USD", balance=None, available=None),
+    ]
+
+
+def _transfer(amount, iban, account_id="giro"):
+    holder = AccountHolder(holder_name="Me", iban=iban, bic=None)
+    return Transaction(
+        account_id=account_id,
+        booking_date=date(2026, 1, 5),
+        amount=Decimal(amount),
+        currency="EUR",
+        purpose="Umbuchung",
+        type="TRANSFER",
+        counterparty=holder,
+        direction="out" if Decimal(amount) < 0 else "in",
+    )
+
+
+@pytest.mark.anyio
+async def test_summary_of_all_eur_accounts_reports_internal_transfers_separately(comdirect):
+    comdirect.is_logged_in = True
+    mcp_server._state._client = comdirect
+    comdirect.list_accounts.return_value = _own_accounts()
+    bookings = {
+        "giro": [_tx(1, "2000.00", "Employer"), _tx(2, "-50.00"), _transfer("-500.00", OWN_IBAN.lower())],
+        "tagesgeld": [_transfer("500.00", "DE75 5121 0800 1245 1261 99", "tagesgeld")],
+    }
+    comdirect.iter_all_transactions.side_effect = lambda account_id, **kwargs: iter(bookings[account_id])
+
+    async with Client(mcp_server.mcp) as client:
+        result = await client.call_tool("summarize_transactions", {"min_booking_date": "2026-01-01"})
+        included = await client.call_tool(
+            "summarize_transactions", {"min_booking_date": "2026-01-01", "include_internal": True}
+        )
+
+    assert not result.is_error, result.content
+    data = result.structured_content
+    assert data["account_ids"] == ["giro", "tagesgeld"]
+    assert (data["income"], data["expenses"], data["count"]) == ("2000.00", "-50.00", 2)
+    assert data["internal_transfers"] == {
+        "key": "internal",
+        "income": "500.00",
+        "expenses": "-500.00",
+        "net": "0.00",
+        "count": 2,
+    }
+    assert (included.structured_content["count"], included.structured_content["income"]) == (4, "2500.00")
+    assert "internal_transfers" not in included.structured_content
+
+
+@pytest.mark.anyio
+async def test_list_transactions_marks_internal_transfers(comdirect):
+    comdirect.is_logged_in = True
+    mcp_server._state._client = comdirect
+    comdirect.list_accounts.return_value = _own_accounts()
+    comdirect.iter_all_transactions.side_effect = lambda **kwargs: iter([_transfer("-5.00", OWN_IBAN), _tx(1)])
+
+    async with Client(mcp_server.mcp) as client:
+        result = await client.call_tool("list_transactions", {"account_id": "giro"})
+
+    internal, external = result.structured_content["transactions"]
+    assert internal["internal"] is True
+    assert "internal" not in external
+
+
+@pytest.mark.anyio
+async def test_summary_reports_progress(comdirect, monkeypatch):
+    monkeypatch.setattr(mcp_server, "PROGRESS_EVERY", 2)
+    comdirect.is_logged_in = True
+    mcp_server._state._client = comdirect
+    comdirect.list_accounts.return_value = _own_accounts()
+    comdirect.iter_all_transactions.side_effect = lambda **kwargs: iter([_tx(i) for i in range(1, 6)])
+    updates = []
+
+    async def progress(value, total, message):
+        updates.append(value)
+
+    async with Client(mcp_server.mcp) as client:
+        result = await client.call_tool(
+            "summarize_transactions",
+            {"account_id": "giro", "min_booking_date": "2026-01-01"},
+            progress_callback=progress,
+        )
+
+    assert not result.is_error, result.content
+    assert updates == [2, 4]
+
+
+@pytest.mark.anyio
+async def test_summary_without_eur_account_asks_for_an_account(comdirect):
+    comdirect.is_logged_in = True
+    mcp_server._state._client = comdirect
+    comdirect.list_accounts.return_value = [Account(id="usd", currency="USD", balance=None, available=None)]
+
+    async with Client(mcp_server.mcp) as client:
+        result = await client.call_tool("summarize_transactions", {"min_booking_date": "2026-01-01"})
+
+    assert result.is_error
+    assert "account_id" in result.content[0].text
+    comdirect.iter_all_transactions.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_depot_positions_filter_by_isin(comdirect):
+    from comdirect_mcp.domain.mappers import map_depot_balance
+    from comdirect_mcp.domain.models import DepotPosition
+
+    comdirect.is_logged_in = True
+    mcp_server._state._client = comdirect
+    position = DepotPosition("dep_1", "p", "A", None, None, None, None, None, None, None, None, None, None, "X", "")
+    comdirect.get_depot_positions.return_value = (
+        map_depot_balance({}, "dep_1"),
+        [
+            dataclasses.replace(position, instrument_name="ETF", isin="IE00B4L5Y983"),
+            dataclasses.replace(position, instrument_name="Aktie", isin="DE0007164600"),
+        ],
+    )
+
+    async with Client(mcp_server.mcp) as client:
+        result = await client.call_tool("get_depot_positions", {"depot_id": "dep_1", "isin": "ie00b4l5y983"})
+
+    assert [p["instrument_name"] for p in result.structured_content["positions"]] == ["ETF"]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("mode", ["auto", "legacy"])
+async def test_find_recurring_payments_over_all_eur_accounts(comdirect, mode):
+    from datetime import timedelta
+
+    comdirect.is_logged_in = True
+    mcp_server._state._client = comdirect
+    comdirect.list_accounts.return_value = _own_accounts()
+    today = date.today()
+    rent = [
+        dataclasses.replace(_tx(1, "-800.00", "Landlord"), booking_date=today - timedelta(days=30 * i))
+        for i in range(4)
+    ]
+    comdirect.iter_all_transactions.side_effect = lambda account_id, **kwargs: iter(
+        rent if account_id == "giro" else []
+    )
+
+    async with Client(mcp_server.mcp, mode=mode) as client:
+        result = await client.call_tool("find_recurring_payments", {})
+
+    assert not result.is_error, result.content
+    data = result.structured_content
+    assert data["account_ids"] == ["giro", "tagesgeld"]
+    assert data["min_booking_date"] == (today - timedelta(days=180)).isoformat()
+    assert "history_starts" not in data
+    assert [(p["counterparty"], p["rhythm"], p["yearly_cost"]) for p in data["payments"]] == [
+        ("Landlord", "monthly", "-9600.00")
+    ]
+
+
+@pytest.mark.anyio
+async def test_summary_says_when_the_period_starts_before_the_bank_history(comdirect):
+    from datetime import timedelta
+
+    comdirect.is_logged_in = True
+    mcp_server._state._client = comdirect
+    comdirect.list_accounts.return_value = _own_accounts()
+    comdirect.iter_all_transactions.side_effect = lambda **kwargs: iter([])
+    available = date.today() - timedelta(days=180)
+
+    async with Client(mcp_server.mcp) as client:
+        old = await client.call_tool("summarize_transactions", {"min_booking_date": "2020-01-01"})
+        recent = await client.call_tool("summarize_transactions", {"min_booking_date": available.isoformat()})
+
+    assert old.structured_content["history_starts"] == available.isoformat()
+    assert "history_starts" not in recent.structured_content

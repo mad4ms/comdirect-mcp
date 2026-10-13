@@ -46,7 +46,7 @@ Run all four before you report a change as done. Use `uv add` / `uv lock` for de
 - Never print, log or persist real account data (amounts, IBANs, account/depot ids, names, payment texts,
   documents). Live checks output structure only.
 - Never add tools or API calls that move money or write: orders, transfers, document deletion. Annotations must
-  stay truthful (`download_document` marks documents as read, so it is not `readOnlyHint`).
+  stay truthful (`read_document` marks documents as read, so it is not `readOnlyHint`).
 - Never weaken defaults that protect data (IBAN masking, document size limit, untrusted-content instructions).
 
 ### Code

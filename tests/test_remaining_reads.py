@@ -212,25 +212,20 @@ async def test_new_tools_schemas_guards_annotations_continuation_and_limits(bank
     state = server._ServerState()
     monkeypatch.setattr(server, "_state", state)
     args = {
-        "get_account_balance": {"account_id": "acc_1"},
-        "get_depot_position": {"depot_id": "dep_1", "position_id": "pos_1"},
-        "summarize_portfolio": {"depot_id": "dep_1", "limit": 1},
-        "list_orders": {"depot_id": "dep_1", "limit": 1},
-        "get_order": {"order_id": "order_1", "verbose": True},
-        "get_order_dimensions": {"identifier": "DE0001234567"},
-        "get_document_cover": {"document_id": "doc_1"},
-        "extract_document_text": {"document_id": "doc_1", "max_pages": 1},
+        "summarize_portfolio": ("summarize_portfolio", {"depot_id": "dep_1", "limit": 1}),
+        "list_orders": ("list_orders", {"depot_id": "dep_1", "limit": 1}),
+        "get_order": ("get_order", {"order_id": "order_1", "verbose": True}),
+        "cover": ("read_document", {"document_id": "doc_1", "format": "cover"}),
+        "text": ("read_document", {"document_id": "doc_1", "max_pages": 1}),
     }
     async with Client(server.mcp, mode=mode) as mcp_client:
         tools = {t.name: t for t in (await mcp_client.list_tools()).tools}
-        for name, arguments in args.items():
+        for name, arguments in args.values():
             assert (await mcp_client.call_tool(name, arguments)).is_error
             assert tools[name].output_schema
-            assert tools[name].annotations.read_only_hint is (
-                name not in {"get_document_cover", "extract_document_text"}
-            )
+            assert tools[name].annotations.read_only_hint is (name != "read_document")
         state._client = client
-        for name, arguments in args.items():
+        for name, arguments in args.values():
             result = await mcp_client.call_tool(name, arguments)
             assert not result.is_error, name
             assert result.structured_content is not None
@@ -239,17 +234,37 @@ async def test_new_tools_schemas_guards_annotations_continuation_and_limits(bank
                 tail = await mcp_client.call_tool(name, {**arguments, "offset": 1})
                 assert tail.structured_content["orders"][0]["id"] == "order_2"
                 assert "next_offset" not in tail.structured_content
-        assert (
-            await mcp_client.call_tool("extract_document_text", {"document_id": "doc_1", "max_pages": 21})
-        ).is_error
+        assert (await mcp_client.call_tool("read_document", {"document_id": "doc_1", "max_pages": 21})).is_error
         assert (await mcp_client.call_tool("summarize_portfolio", {"depot_id": "dep_1", "limit": 0})).is_error
         with patch.object(
             client, "get_document_cover", side_effect=ApiException(status=500, reason="Internal Server Error")
         ):
-            failure = await mcp_client.call_tool("get_document_cover", {"document_id": "doc_1"})
+            failure = await mcp_client.call_tool("read_document", {"document_id": "doc_1", "format": "cover"})
             assert failure.is_error
             message = " ".join(getattr(block, "text", "") for block in failure.content)
-            assert "HTTP 500" in message and "extract_document_text" in message
+            assert "HTTP 500" in message and "format='text'" in message
         monkeypatch.setattr(server, "MAX_DOCUMENT_BYTES", 1)
-        assert (await mcp_client.call_tool("extract_document_text", {"document_id": "doc_1"})).is_error
-        assert (await mcp_client.call_tool("get_document_cover", {"document_id": "doc_1"})).is_error
+        assert (await mcp_client.call_tool("read_document", {"document_id": "doc_1"})).is_error
+        assert (await mcp_client.call_tool("read_document", {"document_id": "doc_1", "format": "cover"})).is_error
+
+
+def test_dimensions_leave_out_empty_extension_lists():
+    # Live API: every order type carries empty limitExtensions/tradingRestrictions lists.
+    data = {"venues": [{"venueId": "v", "orderTypes": {"QUOTE": {"limitExtensions": [], "tradingRestrictions": []}}}]}
+    view = dimensions_view(map_dimensions(data)).model_dump(mode="json")
+    assert view == {"count": 1, "venues": [{"id": "v", "order_types": {"QUOTE": {}}}]}
+
+
+@pytest.mark.anyio
+async def test_order_filter_accepts_types_beyond_the_specification(bank, monkeypatch):
+    # Live API: order dimensions list TRAILING_STOP_NATIVE_MARKET, which the specification does not name.
+    client, _ = bank
+    state = server._ServerState()
+    state._client = client
+    monkeypatch.setattr(server, "_state", state)
+    async with Client(server.mcp) as mcp_client:
+        result = await mcp_client.call_tool(
+            "list_orders", {"depot_id": "dep_1", "order_type": "TRAILING_STOP_NATIVE_MARKET"}
+        )
+    assert not result.is_error, result.content
+    assert result.structured_content["count"] == 0

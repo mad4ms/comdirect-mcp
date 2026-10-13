@@ -101,7 +101,7 @@ def test_invalid_toml_names_the_file(categories_file):
 
 def test_summarize_by_category(rules):
     txs = [_tx("-30", "REWE"), _tx("-20", "EDEKA"), _tx("-5", "Kiosk"), _tx("100", "Employer")]
-    summary = views.summarize("acc", txs, "category", max_groups=10, categories=rules)
+    summary = views.summarize(["acc"], txs, "category", max_groups=10, categories=rules)
     groups = {g.key: (g.net, g.count) for g in summary.groups}
     assert groups == {
         "Sonstige Einnahmen": (Decimal("100"), 1),
@@ -113,5 +113,5 @@ def test_summarize_by_category(rules):
 
 def test_categories_see_real_names_when_names_are_masked(rules, monkeypatch):
     monkeypatch.setattr(views, "MASK_NAMES", True)
-    summary = views.summarize("acc", [_tx("-30", "REWE")], "category", max_groups=10, categories=rules)
+    summary = views.summarize(["acc"], [_tx("-30", "REWE")], "category", max_groups=10, categories=rules)
     assert [g.key for g in summary.groups] == ["Lebensmittel"]

@@ -79,23 +79,19 @@ Details: [Privacy and security](docs/explanation/privacy-and-security.md) ·
 | `login` | Starts a session; asks you to approve the push TAN |
 | `logout` | Ends the session and revokes it at comdirect (no further refresh) |
 | `list_accounts` | Accounts with type (Girokonto, Tagesgeld, ...) and balances |
-| `get_wealth_overview` | All product balances with bank-supplied EUR totals, including loans and savings |
-| `list_depot_transactions` | Securities purchases, sales and transfers with filters and continuation |
-| `get_instrument` | Security metadata; optional fund fees/ratings and derivative details |
-| `list_transactions` | Transactions with date, amount, counterparty and cleaned-up purpose; compact by default |
-| `summarize_transactions` | Cash flow and spending per month, counterparty, type or your own categories, computed on the server |
+| `list_transactions` | Transactions with date, amount, counterparty and cleaned-up purpose; the merchant instead of PayPal; transfers between your own accounts are marked |
+| `summarize_transactions` | Cash flow and spending per month, counterparty, type or your own categories, for one or all accounts, computed on the server; transfers between your own accounts are reported separately |
+| `find_recurring_payments` | Subscriptions, contracts and standing orders with rhythm, price changes and yearly cost (last 180 days, all the API returns) |
 | `list_cards` | Card balances (Visa); the API has no card transactions |
+| `get_wealth_overview` | All product balances with bank-supplied EUR totals, including loans and savings |
 | `list_depots` | Securities accounts |
-| `get_depot_positions` | Positions (name, ISIN, WKN, values, P&L) and depot balance |
-| `list_documents` | Postbox documents (statements, order confirmations, tax documents) |
-| `download_document` | A document as embedded resource (comdirect marks it as read) |
-| `get_account_balance` | Balance and masked static data for one account |
-| `get_depot_position` | One securities position, with optional details |
+| `get_depot_positions` | Positions (name, ISIN, WKN, values, P&L) and depot balance, optionally for one security |
+| `list_depot_transactions` | Securities purchases, sales and transfers with filters and continuation |
 | `summarize_portfolio` | Largest positions and allocation percentages per currency |
+| `get_instrument` | Security metadata; optional fund fees/ratings, derivative details and trading venues |
 | `list_orders` / `get_order` | Read the order book and individual orders; never place or change orders |
-| `get_order_dimensions` | Available trading venues, currencies and order types |
-| `get_document_cover` | Bounded plain text from the document pre-page |
-| `extract_document_text` | Bounded PDF text with page continuation; downloading marks it as read |
+| `list_documents` | Postbox documents (statements, order confirmations, tax documents) |
+| `read_document` | A document as bounded text, its cover page, or a link to the PDF; comdirect marks it as read |
 
 Arguments and results: [Tools reference](docs/reference/tools.md).
 
@@ -126,7 +122,7 @@ New to this? Follow the [Getting started tutorial](docs/tutorials/getting-starte
 ### 2. Store your credentials in the OS keychain
 
 ```bash
-uvx comdirect-mcp@0.5.1 configure
+uvx comdirect-mcp@0.6.0 configure
 ```
 
 Prompts for Client ID, Client Secret, Zugangsnummer and PIN and stores them in the macOS Keychain, Windows
@@ -142,7 +138,7 @@ Credential Manager or Linux Secret Service. Other options (VS Code inputs, envir
   "mcpServers": {
     "comdirect": {
       "command": "uvx",
-      "args": ["comdirect-mcp@0.5.1"]
+      "args": ["comdirect-mcp@0.6.0"]
     }
   }
 }
@@ -151,7 +147,7 @@ Credential Manager or Linux Secret Service. Other options (VS Code inputs, envir
 **Claude Code**
 
 ```bash
-claude mcp add --transport stdio --scope user comdirect -- uvx comdirect-mcp@0.5.1
+claude mcp add --transport stdio --scope user comdirect -- uvx comdirect-mcp@0.6.0
 ```
 
 **VS Code** (*MCP: Open User Configuration*)
@@ -162,7 +158,7 @@ claude mcp add --transport stdio --scope user comdirect -- uvx comdirect-mcp@0.5
     "comdirect": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["comdirect-mcp@0.5.1"]
+      "args": ["comdirect-mcp@0.6.0"]
     }
   }
 }
@@ -171,7 +167,7 @@ claude mcp add --transport stdio --scope user comdirect -- uvx comdirect-mcp@0.5
 **Ollama** (via [ollmcp](https://github.com/jonigl/mcp-client-for-ollama))
 
 ```bash
-uvx ollmcp mcp add --scope user comdirect -- uvx comdirect-mcp@0.5.1
+uvx ollmcp mcp add --scope user comdirect -- uvx comdirect-mcp@0.6.0
 uvx ollmcp -m <model>
 ```
 

@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "comdirect-mcp"
-version = "0.5.1"
+version = "0.6.0"
 description = "MCP server and typed Python client for the comdirect banking REST API"
 readme = "README.md"
 requires-python = ">=3.12"

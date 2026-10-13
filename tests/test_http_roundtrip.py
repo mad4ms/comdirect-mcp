@@ -25,7 +25,7 @@ ACCOUNT_BALANCES = {
                 "currency": "EUR",
                 "clientId": "cli_1",
                 "accountType": {"key": "CA", "text": "Girokonto"},
-                "iban": "DE89370400440532013000",
+                "iban": "DE75512108001245126199",
             },
             "accountId": "acc_1",
             "balance": {"value": "1234.56", "unit": "EUR"},

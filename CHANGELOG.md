@@ -6,18 +6,63 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-13
+
+### Breaking
+
+- Fewer, consolidated tools (21 -> 17). `read_document(format="text" | "cover" | "file")` replaces
+  `extract_document_text`, `get_document_cover` and `download_document`; `format="file"` returns a
+  `resource_link` to the new resource `comdirect://documents/{document_id}` instead of embedding the PDF as base64
+  in the model's context. `get_account_balance` is gone (`list_accounts` has every balance), `get_depot_position`
+  is replaced by `get_depot_positions(isin=...)`, `get_order_dimensions` by
+  `get_instrument(include_order_dimensions=true)`. The Python client keeps all methods.
+- All lists page the same way: `limit`/`offset` in, `count`, `offset`, `truncated`, `next_offset` out.
+  `list_documents` takes `limit`/`offset` instead of `paging_count`/`paging_first`.
+- `summarize_transactions` returns `account_ids` instead of `account_id`, and leaves transfers between your own
+  accounts out of income and expenses by default (see below).
+
 ### Added
+
+- `find_recurring_payments`: subscriptions, contracts and standing orders with rhythm, current and previous amount,
+  projected yearly cost, next expected payment and whether a payment has ended. It covers the last 180 days, all
+  that comdirect returns.
+- `summarize_transactions` and `find_recurring_payments` return `history_starts` when the requested period starts
+  before the 180 days of account transactions that comdirect returns (seen live; not in the specification), so a
+  long-term total is not mistaken for a complete one. The `find_subscriptions` prompt
+  uses it instead of having the assistant read individual bookings.
+- Payments through PayPal show the merchant from the payment reference as counterparty and `via: "PayPal"`, so
+  grouping by counterparty, category rules and recurring payments see the shop instead of PayPal. Category rules
+  that matched PayPal as counterparty need `purpose = "PP."` instead.
+- `summarize_transactions(group_by="category")` lists the ten largest counterparties without a matching rule as
+  `uncategorized`, so the assistant can propose rules.
+- Transfers between your own accounts are recognised by IBAN: `list_transactions` marks them with `internal`,
+  `summarize_transactions` reports them as `internal_transfers` (`include_internal=true` counts them as before).
+- `summarize_transactions` without `account_id` sums all EUR accounts together, and reports progress while it reads.
+- Bank results are cached for 60 seconds per session (`COMDIRECT_MCP_CACHE_TTL`, `ComdirectClient(cache_ttl=...)`),
+  so continuing a list or a follow-up question no longer reloads every page.
+- Human-readable titles for all tools; `list_orders` lists the valid `status` and `order_type` values; parameter
+  descriptions for all tools.
 
 - Prompts `monthly_review`, `find_subscriptions` and `tax_documents`: ready-made analyses that name the right
   tools and pitfalls (internal transfers, documents marked as read). The client can complete their arguments.
 - Local category rules (`~/.config/comdirect-mcp/categories.toml`, `COMDIRECT_MCP_CATEGORIES`) and
   `summarize_transactions(group_by="category")`. The rules are applied on the server; the resource
   `comdirect://categories` shows their format and current content.
-- `COMDIRECT_MCP_SKIP_ELICITATION=1` replaces the login confirmation dialog with the fixed approval window, for
-  clients that decline the dialog without showing it (seen with Claude Code 2.1.296 on protocol 2026-07-28).
+- A login dialog that the client declines or cancels within one second, without showing it (seen with Claude Code
+  2.1.296 on protocol 2026-07-28), falls back to the fixed approval window instead of failing.
+  `COMDIRECT_MCP_SKIP_ELICITATION=1` skips the dialog altogether.
 
 ### Changed
 
+- Smaller results: portfolio weights are rounded to two decimals, order dimensions leave out empty limit extension
+  and trading restriction lists, and a payment reference that only says "End-to-End-Ref.: nicht angegeben" is
+  left out.
+- The `find_subscriptions` prompt covers at most 6 months (default 6) and `monthly_review` completes the current
+  and the last six months, since the bank returns no older account transactions.
+- `list_orders` accepts any `order_type`: the live API uses types the specification does not name, e.g.
+  `TRAILING_STOP_NATIVE_MARKET`.
+- Paging through account transactions stops at the first bank page older than `min_booking_date` instead of
+  reading the account's whole history; the comdirect API has no date filter for account transactions.
 - A login that is not approved now says whether the dialog was declined, cancelled or submitted without approval,
   and tells the agent not to retry without asking, since each attempt counts towards comdirect's lock after 5.
 - The login logs the client's name, protocol version, elicitation capability and raw answer, and each challenge
@@ -171,7 +216,8 @@ Compared against comdirect's PDF documentation (*REST API – Schnittstellenspez
 
 - Initial release: OAuth + 2FA login, accounts, transactions, depots.
 
-[Unreleased]: https://github.com/mad4ms/comdirect-mcp/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/mad4ms/comdirect-mcp/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/mad4ms/comdirect-mcp/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/mad4ms/comdirect-mcp/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/mad4ms/comdirect-mcp/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/mad4ms/comdirect-mcp/compare/v0.3.1...v0.4.0

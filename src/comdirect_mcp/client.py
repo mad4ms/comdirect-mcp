@@ -5,6 +5,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from datetime import date
+from functools import partial
 from typing import Any
 
 from ._openapi import ApiClient, Configuration
@@ -106,16 +107,24 @@ class ComdirectApiClient(ApiClient):
         )
 
 
+# The account transaction API returns the bookings of this many days only (seen live; not in the specification).
+ACCOUNT_HISTORY_DAYS = 180
+
+
 class ComdirectClient:
     # Refresh the access token this many seconds before it expires.
     TOKEN_REFRESH_MARGIN = 60
 
-    def __init__(self, credentials, tan_handlers=None):
+    def __init__(self, credentials, tan_handlers=None, cache_ttl: float = 0):
+        """`cache_ttl` > 0 keeps list results and transaction pages for that many seconds (per session)."""
         self._auth = Authenticator(**credentials, **(tan_handlers or {}))
         self._session_id: str | None = None
         self._refresh_token: str | None = None
         self._token_expires_at: float | None = None
         self._token_lock = threading.Lock()
+        self._cache_ttl = cache_ttl
+        self._cache: dict[tuple[Any, ...], tuple[float, Any]] = {}
+        self._cache_lock = threading.Lock()
 
         # Initialize OpenAPI client with default configuration
         config = Configuration(host="https://api.comdirect.de/api")
@@ -162,6 +171,25 @@ class ComdirectClient:
         with self._token_lock:
             self._session_id = session_id
             self._store_tokens(tokens)
+        self.clear_cache()
+
+    def clear_cache(self):
+        with self._cache_lock:
+            self._cache.clear()
+
+    def _cached[T](self, key: tuple[Any, ...], load: Callable[[], T]) -> T:
+        """Returns a result loaded less than `cache_ttl` seconds ago, or loads it. Errors are not cached."""
+        if self._cache_ttl <= 0:
+            return load()
+        now = time.monotonic()
+        with self._cache_lock:
+            hit = self._cache.get(key)
+            if hit is not None and hit[0] > now:
+                return hit[1]
+        value = load()
+        with self._cache_lock:
+            self._cache[key] = (now + self._cache_ttl, value)
+        return value
 
     def _store_tokens(self, tokens: dict[str, Any]):
         self._api_client.configuration.access_token = tokens["access_token"]
@@ -196,13 +224,18 @@ class ComdirectClient:
         self._refresh_token = None
         self._token_expires_at = None
         self._api_client.configuration.access_token = None
+        self.clear_cache()
 
     def list_accounts(self) -> list[Account]:
         """
         Returns a list of domain Account objects.
         """
-        res = self._banking.banking_v2_get_account_balances(user="user")
-        return [map_account(b) for b in res.values or []]
+
+        def load():
+            res = self._banking.banking_v2_get_account_balances(user="user")
+            return tuple(map_account(b) for b in res.values or [])
+
+        return list(self._cached(("accounts",), load))
 
     def get_account_balance(self, account_id: str) -> Account:
         """Fetch the balance and static data of one account."""
@@ -267,20 +300,18 @@ class ComdirectClient:
             raise TransactionFilterError("Use INCOMING or OUTGOING as transaction_direction.")
         api_direction = directions.get(transaction_direction) if transaction_direction else None
 
-        def matching(values):
-            for value in values or []:
-                tx = map_transaction(value, account_id)
-                if lower or upper:
-                    if tx.booking_date is None:
-                        raise TransactionFilterError("A transaction has no booking date; omit booking-date filters.")
-                    if (lower and tx.booking_date < lower) or (upper and tx.booking_date > upper):
-                        continue
-                if api_direction in ("CREDIT", "DEBIT"):
-                    if tx.amount is None:
-                        raise TransactionFilterError("A transaction has no amount; omit the direction filter.")
-                    if (api_direction == "CREDIT" and tx.amount <= 0) or (api_direction == "DEBIT" and tx.amount >= 0):
-                        continue
-                yield tx
+        def matches(tx: Transaction) -> bool:
+            if lower or upper:
+                if tx.booking_date is None:
+                    raise TransactionFilterError("A transaction has no booking date; omit booking-date filters.")
+                if (lower and tx.booking_date < lower) or (upper and tx.booking_date > upper):
+                    return False
+            if api_direction in ("CREDIT", "DEBIT"):
+                if tx.amount is None:
+                    raise TransactionFilterError("A transaction has no amount; omit the direction filter.")
+                if (api_direction == "CREDIT" and tx.amount <= 0) or (api_direction == "DEBIT" and tx.amount >= 0):
+                    return False
+            return True
 
         if transaction_state not in (None, "BOOKED"):
             res = self._get_account_transactions_page(
@@ -292,24 +323,43 @@ class ComdirectClient:
                 min_booking_date=min_booking_date,
                 max_booking_date=max_booking_date,
             )
-            yield from matching(res.values)
+            yield from filter(matches, (map_transaction(value, account_id) for value in res.values or []))
             return
 
+        # The API has no booking-date filter. Booked transactions come newest first, so paging stops at the first
+        # page that is entirely older than `lower` - but only while every date seen so far was in that order.
         offset = paging_first or 0
+        newest_first = True
+        previous: date | None = None
         while True:
-            res = self._get_account_transactions_page(
-                account_id=account_id,
-                with_account=with_account,
-                paging_first=offset,
-                transaction_state="BOOKED",
-                transaction_direction=api_direction,
-                min_booking_date=min_booking_date,
-                max_booking_date=max_booking_date,
+            res = self._cached(
+                ("transactions", account_id, with_account, offset, api_direction),
+                partial(
+                    self._get_account_transactions_page,
+                    account_id=account_id,
+                    with_account=with_account,
+                    paging_first=offset,
+                    transaction_state="BOOKED",
+                    transaction_direction=api_direction,
+                    min_booking_date=min_booking_date,
+                    max_booking_date=max_booking_date,
+                ),
             )
             if not res.values:
                 break
-            yield from matching(res.values)
-            offset += len(res.values)
+            page = [map_transaction(value, account_id) for value in res.values]
+            yield from filter(matches, page)
+            offset += len(page)
+            if lower is None:
+                continue
+            dates = [tx.booking_date for tx in page]
+            for booked in dates:
+                if booked is None or (previous is not None and booked > previous):
+                    newest_first = False
+                    break
+                previous = booked
+            if newest_first and all(booked is not None and booked < lower for booked in dates):
+                break
 
     def _get_account_transactions_page(
         self,
@@ -499,13 +549,16 @@ class ComdirectClient:
             )
             if value is not None
         ]
-        rows = self._get_all_pages(
-            "/brokerage/depots/{depotId}/v3/orders",
-            [("with-attr", "instrument"), *filters],
-            {"depotId": depot_id},
-            id_key="orderId",
-            label="order",
-            hint="Narrow the filters.",
+        rows = self._cached(
+            ("orders", depot_id, *filters),
+            lambda: self._get_all_pages(
+                "/brokerage/depots/{depotId}/v3/orders",
+                [("with-attr", "instrument"), *filters],
+                {"depotId": depot_id},
+                id_key="orderId",
+                label="order",
+                hint="Narrow the filters.",
+            ),
         )
         return [map_order(row) for row in rows if all(row.get(key) == value for key, value in filters)]
 
@@ -528,13 +581,16 @@ class ComdirectClient:
             query.append(("isin", isin))
         if max_booking_date:
             query.append(("max-bookingDate", max_booking_date.isoformat()))
-        values = self._get_all_pages(
-            "/brokerage/v3/depots/{depotId}/transactions",
-            query,
-            {"depotId": depot_id},
-            id_key="transactionId",
-            label="depot transaction",
-            hint="Narrow the ISIN/date range.",
+        values = self._cached(
+            ("depot_transactions", depot_id, *query),
+            lambda: self._get_all_pages(
+                "/brokerage/v3/depots/{depotId}/transactions",
+                query,
+                {"depotId": depot_id},
+                id_key="transactionId",
+                label="depot transaction",
+                hint="Narrow the ISIN/date range.",
+            ),
         )
         transactions = [map_depot_transaction(tx, depot_id) for tx in values]
         selected = []
@@ -560,16 +616,19 @@ class ComdirectClient:
         """
         Returns (DepotBalance, List[DepotPosition]).
         """
-        # Instrument data (name, ISIN) is only returned when requested explicitly.
-        res = self._brokerage.brokerage_v3_get_depot_positions(depot_id, with_attr="instrument")
-        matches = getattr(getattr(res, "paging", None), "matches", None)
-        if isinstance(matches, int) and matches != len(res.values or []):
-            raise DataError(
-                "Bank returned an incomplete position list. Retry `get_depot_positions` before aggregation."
-            )
-        balance = map_depot_balance(res.aggregated, depot_id)
-        positions = [map_depot_position(p) for p in res.values or []]
-        return balance, positions
+
+        def load() -> tuple[DepotBalance, tuple[DepotPosition, ...]]:
+            # Instrument data (name, ISIN) is only returned when requested explicitly.
+            res = self._brokerage.brokerage_v3_get_depot_positions(depot_id, with_attr="instrument")
+            matches = getattr(getattr(res, "paging", None), "matches", None)
+            if isinstance(matches, int) and matches != len(res.values or []):
+                raise DataError(
+                    "Bank returned an incomplete position list. Retry `get_depot_positions` before aggregation."
+                )
+            return map_depot_balance(res.aggregated, depot_id), tuple(map_depot_position(p) for p in res.values or [])
+
+        balance, positions = self._cached(("positions", depot_id), load)
+        return balance, list(positions)
 
     def get_depot_position(self, depot_id: str, position_id: str) -> DepotPosition:
         """Read one position with instrument metadata."""
@@ -589,10 +648,14 @@ class ComdirectClient:
         """
         Returns a list of Document objects.
         """
-        res = self._messages.messages_v2_get_documents(
-            user="user", paging_first=paging_first, paging_count=paging_count
-        )
-        return [map_document(d) for d in res.values or []]
+
+        def load() -> tuple[Document, ...]:
+            res = self._messages.messages_v2_get_documents(
+                user="user", paging_first=paging_first, paging_count=paging_count
+            )
+            return tuple(map_document(d) for d in res.values or [])
+
+        return list(self._cached(("documents", paging_first, paging_count), load))
 
     def download_document(self, document_id: str, mime_type: str) -> bytes:
         """

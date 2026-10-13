@@ -69,11 +69,13 @@ def pdf_text(content: bytes, first_page: int, max_pages: int, max_chars: int) ->
             "PDF extraction exceeded 15 seconds. Request fewer pages or use `download_document`."
         ) from error
     if result.returncode:
-        raise DataError("PDF text could not be extracted within safety limits. Use `download_document` instead.")
+        raise DataError(
+            "PDF text could not be extracted within safety limits. Use `read_document` with format='file' instead."
+        )
     try:
         return json.loads(result.stdout)
     except (ValueError, UnicodeError) as error:
-        raise DataError("PDF extraction failed. Use `download_document` instead.") from error
+        raise DataError("PDF extraction failed. Use `read_document` with format='file' instead.") from error
 
 
 def _worker(content: bytes, first_page: int, max_pages: int, max_chars: int) -> dict:

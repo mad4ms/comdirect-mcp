@@ -11,7 +11,7 @@
 | `comdirect-mcp --version` | Prints the version |
 | `python -m comdirect_mcp [...]` | Same as `comdirect-mcp [...]` |
 
-Run without installing: `uvx comdirect-mcp@0.5.1 [...]`.
+Run without installing: `uvx comdirect-mcp@0.6.0 [...]`.
 
 ## Credentials
 
@@ -32,13 +32,14 @@ Environment variables, read when the server starts:
 | Variable | Default | Description |
 | --- | --- | --- |
 | `COMDIRECT_MCP_PUSH_TAN_WAIT` | `30` | Seconds to wait for the push TAN approval when the client cannot show a confirmation dialog |
-| `COMDIRECT_MCP_SKIP_ELICITATION` | unset | `1`: do not show the confirmation dialog, wait `COMDIRECT_MCP_PUSH_TAN_WAIT` seconds for the approval in the app instead. For clients that decline the dialog without showing it |
+| `COMDIRECT_MCP_SKIP_ELICITATION` | unset | `1`: do not show the confirmation dialog, wait `COMDIRECT_MCP_PUSH_TAN_WAIT` seconds for the approval in the app instead. Rarely needed: a decline within one second is already treated as a client that did not show the dialog |
 | `COMDIRECT_MCP_LOG_FILE` | unset (stderr) | File the server appends its log to; useful when the client hides stderr |
 | `COMDIRECT_MCP_LOG_LEVEL` | `INFO` | Log level of the server; the MCP SDK never logs below `INFO`, since its debug output contains account data |
 | `COMDIRECT_MCP_UNMASK_IBANS` | unset | `true`, `1` or `yes` returns IBANs and account numbers unmasked; otherwise they are masked (`DE**...3000`, `...7890`) |
 | `COMDIRECT_MCP_MASK_NAMES` | unset | `true`, `1` or `yes` replaces counterparty names with pseudonyms (`Counterparty 3f9a1c`), stable within one server run; payment texts may still contain names |
 | `COMDIRECT_ENV_FILE` | unset | Path to a dotenv file with the credentials (opt-in) |
-| `COMDIRECT_MCP_MAX_DOCUMENT_BYTES` | `10485760` | Size limit for `download_document` in bytes |
+| `COMDIRECT_MCP_MAX_DOCUMENT_BYTES` | `10485760` | Size limit for documents read with `read_document` or the document resource, in bytes |
+| `COMDIRECT_MCP_CACHE_TTL` | `60` | Seconds the server keeps bank results (accounts, transaction pages, positions, orders, documents) within a session, so continuing a list or a follow-up question does not reload them; `0` disables the cache. Logout clears it |
 | `COMDIRECT_MCP_CATEGORIES` | `$XDG_CONFIG_HOME/comdirect-mcp/categories.toml`, else `~/.config/comdirect-mcp/categories.toml` | Category rules file for `summarize_transactions(group_by="category")`; read on every call. Format: [Categorize transactions](../how-to/categorize-transactions.md) |
 
 ## Protocol

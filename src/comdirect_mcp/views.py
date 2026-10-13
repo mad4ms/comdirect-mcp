@@ -11,15 +11,16 @@ import hashlib
 import hmac
 import os
 import secrets
+import statistics
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from .categories import CategoryRule, categorize
+from .categories import UNCATEGORIZED, CategoryRule, categorize
 from .domain.models import (
     Account,
     AccountHolder,
@@ -71,6 +72,21 @@ def mask_number(number: str | None) -> str | None:
     return f"...{number[-4:]}"
 
 
+def own_ibans(accounts: Iterable[Account]) -> frozenset[str]:
+    """The IBANs of the user's accounts, to recognise transfers between them."""
+    return frozenset(_normalize_iban(account.iban) for account in accounts if account.iban)
+
+
+def _normalize_iban(iban: str) -> str:
+    return iban.replace(" ", "").upper()
+
+
+def is_internal(tx: Transaction, own: frozenset[str]) -> bool:
+    """True if the other party is one of the user's own accounts."""
+    iban = tx.counterparty.iban if tx.counterparty else None
+    return iban is not None and _normalize_iban(iban) in own
+
+
 def counterparty_name(holder: AccountHolder | None) -> str | None:
     name = (holder.holder_name.strip() or None) if holder and holder.holder_name else None
     if not name or not MASK_NAMES:
@@ -120,6 +136,8 @@ class TransactionView(BaseModel):
     purpose: str | None = optional("payment reference, cleaned up")
     type: str | None = optional("e.g. TRANSFER, DIRECT_DEBIT, CARD_TRANSACTION, SECURITIES")
     pending: bool | None = optional("true for not yet booked transactions")
+    internal: bool | None = optional("true for a transfer between the user's own accounts")
+    via: str | None = optional("payment service between the user and the counterparty, e.g. PayPal")
     # verbose only
     valuta_date: str | None = optional("raw YYYY-MM-DD, may be a non-existent date")
     counterparty_iban: str | None = optional()
@@ -130,7 +148,7 @@ class TransactionView(BaseModel):
     new_transaction: bool | None = optional("not yet seen in the online banking")
 
 
-def transaction_view(tx: Transaction, verbose: bool = False) -> TransactionView:
+def transaction_view(tx: Transaction, verbose: bool = False, own: frozenset[str] = frozenset()) -> TransactionView:
     view = TransactionView(
         booking_date=tx.booking_date,
         amount=tx.amount,
@@ -140,6 +158,8 @@ def transaction_view(tx: Transaction, verbose: bool = False) -> TransactionView:
         purpose=tx.purpose,
         type=tx.type,
         pending=True if tx.booking_status == "NOTBOOKED" else None,
+        internal=True if is_internal(tx, own) else None,
+        via=tx.via,
     )
     if verbose:
         view = view.model_copy(
@@ -170,7 +190,7 @@ class SummaryGroup(BaseModel):
 
 
 class TransactionSummary(BaseModel):
-    account_id: str
+    account_ids: list[str]
     currency: str | None = optional()
     min_booking_date: date | None = optional()
     max_booking_date: date | None = optional()
@@ -182,6 +202,16 @@ class TransactionSummary(BaseModel):
     groups: list[SummaryGroup]
     groups_truncated: bool = Field(description="True if smaller groups were merged into '(other)'")
     transactions_truncated: bool = Field(description="True if not all transactions in the range were summarized")
+    internal_transfers: SummaryGroup | None = optional(
+        "Transfers between the user's own accounts, left out of the totals and groups above"
+    )
+    uncategorized: list[SummaryGroup] | None = optional(
+        "group_by=category: the largest counterparties without a matching rule, to propose new rules"
+    )
+    history_starts: date | None = optional(
+        "Only set if the period starts earlier: comdirect returns account transactions of the last 180 days, so "
+        "bookings before this date are missing from the result"
+    )
 
 
 def _group_key(tx: Transaction, group_by: GroupBy, categories: Sequence[CategoryRule]) -> str:
@@ -201,7 +231,7 @@ def _group(key: str, amounts: list[Decimal]) -> SummaryGroup:
 
 
 def summarize(
-    account_id: str,
+    account_ids: list[str],
     transactions: Iterable[Transaction],
     group_by: GroupBy,
     max_groups: int,
@@ -209,20 +239,31 @@ def summarize(
     max_booking_date: date | None = None,
     transactions_truncated: bool = False,
     categories: Sequence[CategoryRule] = (),
+    exclude_internal: frozenset[str] = frozenset(),
+    history_starts: date | None = None,
 ) -> TransactionSummary:
     """
     Sums incoming and outgoing amounts per group. Raises ValueError for mixed currencies.
     `categories` are the rules for group_by="category"; they see unmasked counterparty names.
+    Transfers to or from the IBANs in `exclude_internal` are summed separately as `internal_transfers`.
     """
     amounts_by_key: dict[str, list[Decimal]] = defaultdict(list)
+    uncategorized: dict[str, list[Decimal]] = defaultdict(list)
+    internal: list[Decimal] = []
     currencies = set()
     for tx in transactions:
         if tx.amount is None or not tx.currency:
             raise ValueError("A transaction is missing its amount or currency; totals cannot be calculated.")
         currencies.add(tx.currency)
-        amounts_by_key[_group_key(tx, group_by, categories)].append(tx.amount)
+        if is_internal(tx, exclude_internal):
+            internal.append(tx.amount)
+            continue
+        key = _group_key(tx, group_by, categories)
+        amounts_by_key[key].append(tx.amount)
+        if group_by == "category" and key == UNCATEGORIZED:
+            uncategorized[counterparty_name(tx.counterparty) or "(unknown)"].append(tx.amount)
     if len(currencies) > 1:
-        raise ValueError(f"The account has transactions in several currencies ({', '.join(sorted(currencies))}).")
+        raise ValueError(f"The transactions are in several currencies ({', '.join(sorted(currencies))}).")
 
     groups = [_group(key, amounts) for key, amounts in amounts_by_key.items()]
     if group_by == "month":
@@ -237,7 +278,7 @@ def summarize(
     all_amounts = [amount for amounts in amounts_by_key.values() for amount in amounts]
     total = _group("total", all_amounts)
     return TransactionSummary(
-        account_id=account_id,
+        account_ids=account_ids,
         currency=next(iter(currencies), None),
         min_booking_date=min_booking_date,
         max_booking_date=max_booking_date,
@@ -249,7 +290,154 @@ def summarize(
         groups=groups,
         groups_truncated=groups_truncated,
         transactions_truncated=transactions_truncated,
+        internal_transfers=_group("internal", internal) if internal else None,
+        uncategorized=_largest_groups(uncategorized, 10) if uncategorized else None,
+        history_starts=history_starts,
     )
+
+
+def _largest_groups(amounts_by_key: dict[str, list[Decimal]], limit: int) -> list[SummaryGroup]:
+    groups = [_group(key, amounts) for key, amounts in amounts_by_key.items()]
+    groups.sort(key=lambda g: (g.income - g.expenses, g.count), reverse=True)
+    return groups[:limit]
+
+
+# --------- Recurring payments ---------
+
+Rhythm = Literal["weekly", "monthly", "bimonthly", "quarterly", "half-yearly", "yearly"]
+
+# (rhythm, shortest and longest interval in days, payments per year, minimum number of payments)
+_RHYTHMS: tuple[tuple[Rhythm, int, int, int, int], ...] = (
+    ("weekly", 5, 9, 52, 4),
+    ("monthly", 25, 36, 12, 3),
+    ("bimonthly", 54, 68, 6, 3),
+    ("quarterly", 80, 100, 4, 2),
+    ("half-yearly", 165, 200, 2, 2),
+    ("yearly", 330, 400, 1, 2),
+)
+
+
+class RecurringPayment(BaseModel):
+    counterparty: str
+    rhythm: Rhythm
+    count: int = Field(description="Payments in the period")
+    first_date: date
+    last_date: date
+    last_amount: Decimal = Field(description="negative = money out")
+    previous_amount: Decimal | None = optional("The amount before the last change, if the amount changed")
+    yearly_cost: Decimal = Field(description="last_amount times payments per year")
+    next_expected: date | None = optional("Only while the payment is still active")
+    ended: bool | None = optional("true if the expected next payment is clearly overdue (cancelled?)")
+    type: str | None = optional("e.g. DIRECT_DEBIT, STANDING_ORDER, TRANSFER")
+    via: str | None = optional("payment service, e.g. PayPal")
+
+
+class RecurringPayments(BaseModel):
+    account_ids: list[str]
+    currency: str | None = optional()
+    min_booking_date: date
+    max_booking_date: date
+    count: int
+    yearly_cost: Decimal = Field(description="Sum of yearly_cost of the active payments (negative)")
+    payments: list[RecurringPayment]
+    payments_truncated: bool = Field(description="True if more recurring payments were found than `limit`")
+    transactions_truncated: bool = Field(description="True if not all transactions in the range were read")
+    history_starts: date | None = optional(
+        "Only set if the period starts earlier: comdirect returns account transactions of the last 180 days, so "
+        "bookings before this date are missing from the result"
+    )
+
+
+def _rhythm(intervals: list[int], count: int) -> tuple[Rhythm, int, int] | None:
+    """The rhythm that at least three quarters of the intervals fit, with its payments per year and median."""
+    median = statistics.median(intervals)
+    for rhythm, shortest, longest, per_year, minimum in _RHYTHMS:
+        if count < minimum or not shortest <= median <= longest:
+            continue
+        if sum(shortest <= days <= longest for days in intervals) >= 0.75 * len(intervals):
+            return rhythm, per_year, round(median)
+    return None
+
+
+def find_recurring(
+    account_ids: list[str],
+    transactions: Iterable[Transaction],
+    min_booking_date: date,
+    max_booking_date: date,
+    limit: int,
+    own: frozenset[str] = frozenset(),
+    transactions_truncated: bool = False,
+    history_starts: date | None = None,
+) -> RecurringPayments:
+    """
+    Outgoing payments to the same counterparty at regular intervals (weekly to yearly), without transfers between
+    own accounts. Amounts may vary by a factor of 2 at most (weekly: 20 %), so shopping and fuel are not reported.
+    Raises ValueError for mixed currencies.
+    """
+    by_counterparty: dict[str, list[tuple[date, Decimal, Transaction]]] = defaultdict(list)
+    currencies = set()
+    for tx in transactions:
+        if tx.amount is None or tx.amount >= 0 or tx.booking_date is None or is_internal(tx, own):
+            continue
+        name = counterparty_name(tx.counterparty)
+        if name:
+            by_counterparty[name].append((tx.booking_date, tx.amount, tx))
+            if tx.currency:
+                currencies.add(tx.currency)
+    if len(currencies) > 1:
+        raise ValueError(f"The transactions are in several currencies ({', '.join(sorted(currencies))}).")
+
+    payments = []
+    for name, payments_to in by_counterparty.items():
+        if len(payments_to) < 2:
+            continue
+        payments_to.sort(key=lambda payment: payment[0])
+        dates = [payment[0] for payment in payments_to]
+        amounts = [payment[1] for payment in payments_to]
+        last = payments_to[-1][2]
+        found = _rhythm([(b - a).days for a, b in zip(dates, dates[1:], strict=False)], len(dates))
+        if found is None:
+            continue
+        rhythm, per_year, period = found
+        # Subscriptions keep their price apart from changes; weekly payments must be stable to exclude shopping.
+        if max(map(abs, amounts)) > min(map(abs, amounts)) * (Decimal("1.2") if rhythm == "weekly" else 2):
+            continue
+        previous = next((amount for amount in reversed(amounts) if amount != amounts[-1]), None)
+        next_expected = dates[-1] + timedelta(days=period)
+        ended = next_expected + timedelta(days=period // 2 + 3) < max_booking_date
+        payments.append(
+            RecurringPayment(
+                counterparty=name,
+                rhythm=rhythm,
+                count=len(dates),
+                first_date=dates[0],
+                last_date=dates[-1],
+                last_amount=amounts[-1],
+                previous_amount=previous,
+                yearly_cost=amounts[-1] * per_year,
+                next_expected=None if ended else next_expected,
+                ended=True if ended else None,
+                type=last.type,
+                via=last.via,
+            )
+        )
+    payments.sort(key=lambda p: (bool(p.ended), p.yearly_cost))
+    return RecurringPayments(
+        account_ids=account_ids,
+        currency=next(iter(currencies), None),
+        min_booking_date=min_booking_date,
+        max_booking_date=max_booking_date,
+        count=len(payments),
+        yearly_cost=sum((p.yearly_cost for p in payments if not p.ended), Decimal(0)),
+        payments=payments[:limit],
+        payments_truncated=len(payments) > limit,
+        transactions_truncated=transactions_truncated,
+        history_starts=history_starts,
+    )
+
+
+def _percent(part: Decimal, total: Decimal) -> Decimal | None:
+    return (part / total * 100).quantize(Decimal("0.01")) if total else None
 
 
 # --------- Cards ---------
@@ -444,6 +632,11 @@ class OrderDimensionsView(BaseModel):
     venues: list[VenueView] | None = optional()
 
 
+def _non_empty(values: tuple[str, ...] | None) -> tuple[str, ...] | None:
+    """Leaves out empty lists; the bank sends them for every order type without extensions or restrictions."""
+    return values or None
+
+
 def dimensions_view(value: OrderDimensions) -> OrderDimensionsView:
     if value.venues is None:
         return OrderDimensionsView()
@@ -451,7 +644,13 @@ def dimensions_view(value: OrderDimensions) -> OrderDimensionsView:
     for venue in value.venues:
         data = dataclasses.asdict(venue)
         data["order_types"] = (
-            {key: OrderTypeView(**dataclasses.asdict(details)) for key, details in venue.order_types}
+            {
+                key: OrderTypeView(
+                    limit_extensions=_non_empty(details.limit_extensions),
+                    trading_restrictions=_non_empty(details.trading_restrictions),
+                )
+                for key, details in venue.order_types
+            }
             if venue.order_types is not None
             else None
         )
@@ -641,13 +840,13 @@ def summarize_portfolio(depot_id: str, positions: list[DepotPosition], limit: in
                         isin=p.isin,
                         wkn=p.wkn,
                         value=value,
-                        weight_percent=value / total * 100 if total else None,
+                        weight_percent=_percent(value, total),
                     )
                     for p, value in ranked[:limit]
                 ],
                 omitted_count=max(0, len(ranked) - limit),
                 omitted_value=omitted,
-                omitted_weight_percent=omitted / total * 100 if total else None,
+                omitted_weight_percent=_percent(omitted, total),
             )
         )
     return PortfolioSummary(depot_id=depot_id, count=len(positions), currencies=currencies)

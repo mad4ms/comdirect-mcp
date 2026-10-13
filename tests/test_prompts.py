@@ -57,7 +57,7 @@ async def test_prompts_are_listed_and_render(mode):
     assert "2026-03-01 bis 2026-03-31" in text
     assert 'group_by="month" von 2026-02-01' in text
     assert "keine Kategorie-Regeln" in text
-    assert "summarize_transactions" in subscriptions.messages[0].content.text  # type: ignore[union-attr]
+    assert "find_recurring_payments" in subscriptions.messages[0].content.text  # type: ignore[union-attr]
     tax_text = taxes.messages[0].content.text  # type: ignore[union-attr]
     assert "Steuerjahr 2025" in tax_text and "bevor ich zustimme" in tax_text
 
@@ -89,7 +89,7 @@ async def test_prompt_argument_completion(mode):
         none = await client.complete(PromptReference(name="monthly_review"), {"name": "month", "value": "1999"})
 
     assert months.completion.values[0] == this_month
-    assert len(months.completion.values) == 24
+    assert len(months.completion.values) == 7
     assert years.completion.values[0] == str(date.today().year - 1)
     assert none.completion.values == []
 

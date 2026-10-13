@@ -1,3 +1,4 @@
+import dataclasses
 import re
 from datetime import date
 from decimal import Decimal
@@ -89,7 +90,8 @@ def normalize_purpose(raw: str | None, numbered: bool = True) -> str | None:
     Makes the payment reference readable: removes the line numbers of booked transactions (`numbered`), joins the
     35-character lines - a full line continues the word on the next line, e.g. "Gmb" + "H" - and drops the trailing
     reference block (end-to-end reference, mandate reference, creditor id), which the API returns in dedicated
-    fields as well. Text that does not follow the numbered format is only trimmed.
+    fields as well. Text that does not follow the numbered format is only trimmed. A purpose that consists only of
+    that block, e.g. "End-to-End-Ref.: nicht angegeben", has no text of its own and becomes None.
     """
     if not raw:
         return None
@@ -102,7 +104,7 @@ def normalize_purpose(raw: str | None, numbered: bool = True) -> str | None:
             for line in lines
         )
     reference = _REFERENCE_LABELS.search(text)
-    if reference and reference.start() > 0:
+    if reference:
         text = text[: reference.start()]
     text = " ".join(text.split())
     return text or None
@@ -153,18 +155,38 @@ def map_account_holder(info):
     )
 
 
+# Payment services that book in their own name and name the merchant in the payment reference.
+_PAYMENT_SERVICES = (("PayPal", re.compile(r"\bpaypal\b", re.IGNORECASE), re.compile(r"Ihr Einkauf bei (.+)$")),)
+
+
+def _merchant(counterparty: AccountHolder | None, purpose: str | None) -> tuple[AccountHolder | None, str | None]:
+    """Replaces a payment service as counterparty with the merchant from the payment reference, if it names one."""
+    if counterparty is None or not counterparty.holder_name or not purpose:
+        return counterparty, None
+    for service, service_name, merchant_text in _PAYMENT_SERVICES:
+        if not service_name.search(counterparty.holder_name):
+            continue
+        found = merchant_text.search(purpose)
+        merchant = found.group(1).strip(" ,.") if found else ""
+        if merchant and len(merchant) <= 70:
+            return dataclasses.replace(counterparty, holder_name=merchant), service
+    return counterparty, None
+
+
 def map_transaction(tx, account_id):
     amount = _to_decimal(tx.amount)
     remitter = map_account_holder(tx.remitter)
     debtor = map_account_holder(tx.deptor)  # API field is 'deptor', not 'debtor'
     creditor = map_account_holder(tx.creditor)
+    purpose = normalize_purpose(tx.remittance_info, numbered=tx.booking_status != "NOTBOOKED")
+    counterparty, via = _merchant(_counterparty(amount, remitter, debtor, creditor), purpose)
     return Transaction(
         account_id=account_id,
         booking_date=_to_date(tx.booking_date),
         amount=amount,
         currency=_to_unit(tx.amount),
         # Only booked transactions carry line numbers (API docs 4.2.3)
-        purpose=normalize_purpose(tx.remittance_info, numbered=tx.booking_status != "NOTBOOKED"),
+        purpose=purpose,
         type=tx.transaction_type.key if tx.transaction_type else None,
         reference=tx.reference,
         booking_status=tx.booking_status,
@@ -176,9 +198,10 @@ def map_transaction(tx, account_id):
         remitter=remitter,
         debtor=debtor,
         creditor=creditor,
-        counterparty=_counterparty(amount, remitter, debtor, creditor),
+        counterparty=counterparty,
         direction=("in" if amount > 0 else "out" if amount < 0 else None) if amount is not None else None,
         purpose_raw=tx.remittance_info,
+        via=via,
     )
 
 

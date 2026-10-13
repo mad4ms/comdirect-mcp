@@ -6,7 +6,7 @@ The comdirect API can place securities orders. `comdirect-mcp` deliberately expo
 assistant that can be manipulated by text in a payment reference must not be able to trade. Contributions that
 move money are not accepted.
 
-The tool annotations are kept truthful: data tools are `readOnlyHint: true`, except `download_document`, because
+The tool annotations are kept truthful: data tools are `readOnlyHint: true`, except `read_document`, because
 comdirect marks an unread document as read when it is downloaded.
 
 ## Layers

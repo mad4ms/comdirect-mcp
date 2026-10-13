@@ -1,5 +1,10 @@
 # MCP tool review
 
+> The reviews below predate the tool consolidation in 0.6.0: `download_document`,
+> `extract_document_text` and `get_document_cover` are now `read_document`, `get_account_balance`,
+> `get_depot_position` and `get_order_dimensions` were merged into `list_accounts`, `get_depot_positions` and
+> `get_instrument`. See the [changelog](../../CHANGELOG.md).
+
 This review uses the actual local CLI executable as a subprocess, with MCP JSON-RPC over stdin/stdout.
 Live responses are inspected in memory only; no credentials, account identifiers, amounts, names, references
 or documents are recorded here. The test is reproducible with `scripts/live_stdio_check.py`.

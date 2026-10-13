@@ -154,3 +154,55 @@ def test_unnamed_counterparty_retains_iban_for_verbose_view():
     view = transaction_view(tx, verbose=True).model_dump(mode="json")
     assert view["counterparty_iban"] == "DE**...3000"
     assert "counterparty" not in view
+
+
+def test_purpose_with_only_the_reference_block_is_empty():
+    # Live API: a transfer between own accounts had only this text as remittance info.
+    assert normalize_purpose(numbered("End-to-End-Ref.:", "nicht angegeben")) is None
+
+
+@pytest.mark.parametrize(
+    "holder, purpose, counterparty, via",
+    [
+        # Live API shapes of PayPal direct debits
+        (
+            "PayPal Europe S.a.r.l. et Cie S.C.A",
+            "1000000000001/PP.0000.PP/. Beispiel Lieferdienst B.V., Ihr Einkauf bei Beispiel Lieferdienst B.V.",
+            "Beispiel Lieferdienst B.V",
+            "PayPal",
+        ),
+        (
+            "PayPal Europe S.a.r.l. et Cie S.C.A",
+            "1000000000002/. Shop GmbH , Ihr Einkauf bei Shop GmbH",
+            "Shop GmbH",
+            "PayPal",
+        ),
+        (
+            "PayPal Europe S.a.r.l. et Cie S.C.A",
+            "1000000000003/. PayPal Guthaben",
+            "PayPal Europe S.a.r.l. et Cie S.C.A",
+            None,
+        ),
+        ("Stadtwerke", "Ihr Einkauf bei Stadtwerke", "Stadtwerke", None),
+    ],
+)
+def test_payment_service_is_replaced_by_the_merchant(holder, purpose, counterparty, via):
+    tx = SimpleNamespace(
+        amount=SimpleNamespace(value="-5.00", unit="EUR"),
+        remitter=SimpleNamespace(holder_name=holder, iban="DE89370400440532013000", bic=None),
+        deptor=None,
+        creditor=None,
+        remittance_info=purpose,
+        booking_status="NOTBOOKED",
+        booking_date=None,
+        transaction_type=SimpleNamespace(key="DIRECT_DEBIT"),
+        reference=None,
+        valuta_date=None,
+        direct_debit_creditor_id=None,
+        direct_debit_mandate_id=None,
+        end_to_end_reference=None,
+        new_transaction=None,
+    )
+    mapped = map_transaction(tx, "acc")
+    assert (mapped.counterparty.holder_name, mapped.via) == (counterparty, via)
+    assert mapped.counterparty.iban == "DE89370400440532013000"

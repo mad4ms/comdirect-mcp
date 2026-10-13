@@ -1,21 +1,31 @@
 # Tools
 
-All tools return structured content with a JSON output schema (except `download_document`, which returns an
-embedded resource). Amounts are decimal strings (`"1234.56"`, negative = money out) to avoid floating point
-rounding, dates are `YYYY-MM-DD`. Results are kept compact for the model's context: fields without a value are
-left out instead of being returned as `null`. Errors are returned as tool results with `isError: true` and a message
-the assistant can act on (e.g. "call `login`").
+All tools return structured content with a JSON output schema and have a human-readable `title`. Amounts are
+decimal strings (`"1234.56"`, negative = money out) to avoid floating point rounding, dates are `YYYY-MM-DD`.
+Results are kept compact for the model's context: fields without a value are left out instead of being returned
+as `null`. Errors are returned as tool results with `isError: true` and a message the assistant can act on (e.g.
+"call `login`").
 
-| Tool | Annotations |
-| --- | --- |
-| [`login`](#login) | `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: true` |
-| [`logout`](#logout) | `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: true` |
-| `download_document`, `extract_document_text`, `get_document_cover` | `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: true` |
-| all other data tools | `readOnlyHint: true`, `openWorldHint: true` |
+| Tool | Title | Annotations |
+| --- | --- | --- |
+| [`login`](#login) | Anmelden | `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: true` |
+| [`logout`](#logout) | Abmelden | `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: true` |
+| [`read_document`](#read_document) | Dokument lesen | `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: true` |
+| all other data tools | | `readOnlyHint: true`, `openWorldHint: true` |
 
-No tool can move money or change orders. The only state change at comdirect besides the session is that
-`download_document` and `extract_document_text` mark an unread document as read. Cover-page access is also
-conservatively annotated as potentially changing read state; the specification does not guarantee otherwise.
+No tool can move money or change orders. The only state change at comdirect besides the session is that reading
+a document's text or file marks an unread document as read. Cover-page access is also conservatively treated as
+potentially changing read state; the specification does not guarantee otherwise.
+
+## Lists and continuation
+
+`list_transactions`, `list_depot_transactions`, `list_orders` and `list_documents` share the same paging fields:
+arguments `limit` and `offset`, result `count` (items in this result), `offset`, `truncated` (more items follow) and
+`next_offset` (only when more items follow). To continue, pass `next_offset` as `offset` with the same filters.
+Offsets count the filtered sequence, not raw bank rows; new bookings between requests can shift it.
+
+The server keeps bank results for `COMDIRECT_MCP_CACHE_TTL` seconds (default 60) per session, so continuing a list
+or asking a follow-up question does not load everything again. Logout clears the cache.
 
 ## login
 
@@ -52,23 +62,25 @@ same when it shuts down.
 | `min_booking_date` | date \| null | null | Earliest booking date, inclusive |
 | `max_booking_date` | date \| null | null | Latest booking date, inclusive |
 | `limit` | integer 1-2000 | 250 | Maximum number of transactions |
-| `offset` | integer >= 0 | 0 | Number of matching transactions to skip |
+| `offset` | integer >= 0 | 0 | `next_offset` of the previous call |
 | `verbose` | boolean | false | Also return references, see below |
 
-Result: `account_id`, `count`, `offset`, `truncated` (more transactions exist beyond `limit`),
-`next_offset` (only when another page exists), `transactions[]` with
+Result: `account_id`, the [paging fields](#lists-and-continuation) and `transactions[]`, newest first, with
 
 - `booking_date`, `amount`, `currency`, `direction` (`in`/`out`), `counterparty`, `purpose`, `type` (e.g.
-  `TRANSFER`, `DIRECT_DEBIT`, `CARD_TRANSACTION`, `SECURITIES`), `pending` (only for not yet booked transactions)
+  `TRANSFER`, `DIRECT_DEBIT`, `CARD_TRANSACTION`, `SECURITIES`), `pending` (only for not yet booked transactions),
+  `internal` (only for transfers to or from one of the user's own accounts, recognised by IBAN), `via` (payment
+  service, e.g. `PayPal`; `counterparty` is then the merchant from the payment reference)
 - with `verbose`: `valuta_date` (raw string, may be a non-existent date such as `2019-02-30`),
   `counterparty_iban` (masked), `reference`, `end_to_end_reference`, `direct_debit_creditor_id`,
   `direct_debit_mandate_id`, `new_transaction`
 
-To continue, pass `next_offset` as `offset` with the same filters. Offsets count matching transactions,
-not raw bank rows. Each request scans from the beginning to preserve local date filtering; later pages can
-cost more API calls. New bookings between requests can shift the sequence; this is not a snapshot cursor.
+comdirect returns the account transactions of the last 180 days only (seen in a live check; the specification does
+not say so). Older bookings are not available through the API.
 
-Booking-date bounds are enforced locally because the account API can ignore date query parameters.
+The account API has no booking-date filter, so the bounds are enforced locally. Booked transactions come newest
+first; paging stops at the first bank page that is entirely older than `min_booking_date`. If the bank ever returns
+dates out of that order, the client reads all pages instead of stopping early.
 `INCOMING`/`OUTGOING` are translated to comdirect's `CREDIT`/`DEBIT` values and checked against the sign.
 Date filters on `NOTBOOKED` are rejected because pending transactions have no booking date.
 
@@ -80,30 +92,66 @@ boundary joined again, and the trailing block with end-to-end reference, mandate
 
 ## summarize_transactions
 
-Sums the booked transactions of an account per group. Use it for cash flow and spending questions; it keeps
-individual transactions out of the model's context.
+Sums booked transactions per group. Use it for cash flow and spending questions; it keeps individual
+transactions out of the model's context.
 
 | Argument | Type | Default | Description |
 | --- | --- | --- | --- |
-| `account_id` | string | required | `id` from `list_accounts` |
 | `min_booking_date` | date | required | First booking date, inclusive |
 | `max_booking_date` | date \| null | null (today) | Last booking date, inclusive |
+| `account_id` | string \| null | null (all EUR accounts) | `id` from `list_accounts` |
 | `group_by` | `month` \| `counterparty` \| `type` \| `category` | `month` | Grouping; `category` uses the local [category rules](../how-to/categorize-transactions.md) |
+| `include_internal` | boolean | false | Count transfers between the user's own accounts as income/expenses |
 | `max_groups` | integer 2-200 | 30 | Further groups are merged into `(other)` |
 
-Result: `account_id`, `currency`, `min_booking_date`, `max_booking_date`, `group_by`, totals `count`, `income`,
-`expenses` (negative), `net`, and `groups[]` with `key` (`YYYY-MM`, counterparty, type or category), `income`, `expenses`,
-`net`, `count`. Months are sorted chronologically, other groups by volume. `groups_truncated` and
-`transactions_truncated` (more than 10,000 transactions) flag incomplete results. Accounts with transactions in
-several currencies, or transactions missing an amount or currency, return an error rather than misleading totals.
-The end date defaults to today and is returned explicitly; a reversed date range is rejected.
-`income` and `expenses` mean incoming/outgoing bookings, including transfers between your own accounts.
-They are not automatically earned income or consumption. Inspect individual bookings before interpreting them
-that way or combining several accounts; internal transfers can appear on both sides.
+Result: `account_ids`, `currency`, `min_booking_date`, `max_booking_date`, `group_by`, totals `count`, `income`,
+`expenses` (negative), `net`, and `groups[]` with `key` (`YYYY-MM`, counterparty, type or category), `income`,
+`expenses`, `net`, `count`. Months are sorted chronologically, other groups by volume. `groups_truncated` and
+`transactions_truncated` (more than 10,000 transactions) flag incomplete results. Transactions in several
+currencies, or transactions missing an amount or currency, return an error rather than misleading totals.
+The end date defaults to today and is returned explicitly; a reversed date range is rejected. If
+`min_booking_date` lies more than 180 days back, `history_starts` names the first day with data, since the bank
+returns nothing older.
+
+Without `account_id` all accounts with currency EUR are summed together (other currencies are left out). Transfers
+whose counterparty IBAN belongs to one of the user's accounts are left out of the totals and groups and reported
+as `internal_transfers` (a group with key `internal`), so moving money to the Tagesgeld account is not counted as an
+expense. Card settlements, securities purchases and savings plans are not internal transfers: their counterparty is
+not an account with an IBAN in `list_accounts`. `income` and `expenses` are still incoming/outgoing bookings, not
+automatically earned income or consumption.
+
+Progress notifications (`notifications/progress`) report the number of transactions read every 500 transactions
+when the client sends a progress token.
 
 With `group_by="category"` the first matching rule decides the group; transactions without a match are grouped as
-`(uncategorized)`. Rules match the real counterparty name, also when `COMDIRECT_MCP_MASK_NAMES` is set; the result
+`(uncategorized)`, and `uncategorized` lists the ten largest counterparties among them, to propose new rules. Rules match the real counterparty name, also when `COMDIRECT_MCP_MASK_NAMES` is set; the result
 only contains the category names. A missing or invalid rules file is an error that names the file.
+
+## find_recurring_payments
+
+Finds subscriptions, contracts and standing orders: outgoing payments to the same counterparty at regular intervals.
+
+| Argument | Type | Default | Description |
+| --- | --- | --- | --- |
+| `min_booking_date` | date \| null | null (180 days ago, all the bank returns) | First booking date, inclusive |
+| `max_booking_date` | date \| null | null (today) | Last booking date, inclusive |
+| `account_id` | string \| null | null (all EUR accounts) | `id` from `list_accounts` |
+| `limit` | integer 1-200 | 50 | Maximum number of payments |
+
+Result: `account_ids`, `currency`, `min_booking_date`, `max_booking_date`, `count` (all payments found), `yearly_cost`
+(sum of the active payments, negative), `payments_truncated`, `transactions_truncated`, and `payments[]` with
+`counterparty`, `rhythm` (`weekly`, `monthly`, `bimonthly`, `quarterly`, `half-yearly`, `yearly`), `count`,
+`first_date`, `last_date`, `last_amount`, `previous_amount` (only if the amount changed), `yearly_cost`
+(`last_amount` times payments per year), `next_expected` (active payments only), `ended` (only when the next
+payment is overdue by more than half a period), `type`, `via`. Active payments come first, the most expensive
+first. `history_starts` is set as in `summarize_transactions`.
+
+A rhythm is reported when at least three quarters of the intervals between the payments fit it; weekly and monthly
+rhythms need at least four and three payments, longer rhythms two. Amounts may differ by a factor of 2 at most
+(weekly payments: 20 %), so shopping and fuel are not reported. Because the bank returns only 180 days, yearly
+payments cannot be found and half-yearly ones only when both payments fall into the window. Income and transfers between the user's own accounts are
+left out. Payments through PayPal are grouped by merchant. Card payments are invisible: the API only shows the card
+settlement.
 
 ## list_cards
 
@@ -125,6 +173,7 @@ Use `id` to distinguish cards when suffixes are missing or identical; never inve
 | Argument | Type | Description |
 | --- | --- | --- |
 | `depot_id` | string, required | `id` from `list_depots` |
+| `isin` | string, 12 characters, optional | Only the position of this security |
 | `verbose` | boolean, default false | Include position ids, purchase values and detailed profit/loss |
 
 Result:
@@ -140,39 +189,6 @@ Relative values (`*_rel`) are percentages as strings, e.g. `"10.00"`. Units (`qu
 ISO 4217 currency codes; `quantity_unit` resolves comdirect's special units (`XXX`, `XXC`, `XXM`, `XXP`, `XXU`) to
 `pieces`, `percent`, `per mille`, `points` and `unknown`.
 
-## list_documents
-
-| Argument | Type | Default | Description |
-| --- | --- | --- | --- |
-| `paging_first` | integer >= 0 | 0 | Index of the first document |
-| `paging_count` | integer 1-1000 | 200 | Maximum number of documents |
-
-Result: `paging_first`, `count` (returned page only), `has_more`, `next_index` (only when another page
-exists; pass as `paging_first`), `documents[]` with `document_id`, `name`, `date`, `mime_type` (`application/pdf` or
-`text/html`), `advertisement`, `already_read`
-
-A full page triggers a one-document lookahead to establish `has_more`; page length alone does not prove
-that more documents exist. No total is invented. Postbox changes between requests can shift page indices.
-
-## download_document
-
-| Argument | Type | Description |
-| --- | --- | --- |
-| `document_id` | string, required | from `list_documents` |
-| `mime_type` | string, required | from `list_documents` |
-
-Result: an embedded resource `comdirect://documents/{document_id}` with the document as base64 `blob` and its
-`mimeType`. Documents above `COMDIRECT_MCP_MAX_DOCUMENT_BYTES` (default 10 MB) are rejected.
-
-comdirect marks an unread document as read when it is downloaded, which is why this tool is not annotated
-read-only.
-
-## API coverage
-
-These tools expose a subset of comdirect's REST API. See [API coverage](api-coverage.md) for the implemented
-operations, missing read endpoints and intentionally excluded write operations. The [MCP tool review](mcp-review.md)
-records per-tool validation and the next usability improvements.
-
 ## list_depot_transactions
 
 Reads securities purchases, sales and transfers from a depot.
@@ -184,20 +200,29 @@ Reads securities purchases, sales and transfers from a depot.
 | `min_booking_date` | date or null | null | Inclusive lower booking-date bound |
 | `max_booking_date` | date or null | null | Inclusive upper booking-date bound |
 | `limit` | integer 1-2000 | 250 | Maximum returned movements |
-| `offset` | integer >= 0 | 0 | Number of matching movements to skip |
+| `offset` | integer >= 0 | 0 | `next_offset` of the previous call |
 | `verbose` | boolean | false | Include transaction/instrument ids, business/settlement dates and execution price |
 
-Result: `depot_id`, `count`, `offset`, `truncated`, optional `next_offset`, and `transactions[]` with
+Result: `depot_id`, the [paging fields](#lists-and-continuation) and `transactions[]` with
 `booking_date`, `booking_status`, `instrument_name`, `isin`, `wkn`, `quantity`, `quantity_unit`,
 `transaction_value`, `transaction_value_currency`, `direction`, `type`.
 Dates are checked locally as well as using the supported upstream upper bound. A filtered movement without a
 booking date causes an actionable error. The client follows upstream pages until the reported match count is
 covered, using raw row counts for bank offsets. Repeated/empty pages or a changing match count are rejected.
-`next_offset` continues the retrieved, filtered sequence. Changing holdings/bookings can shift offsets.
 
 `IN`/`OUT` describe securities entering/leaving the depot, not positive/negative cash flow. Transaction values
 are preserved as supplied; do not infer a cash debit from the sign of a purchase. No cash/securities aggregation
 is performed. No execution, order creation or transfer is possible through this tool.
+
+## summarize_portfolio
+
+Required `depot_id`; `limit` is 1-100, default 20, largest positions per currency.
+Returns `depot_id`, `count`, and `currencies[]`: `currency`, `total_value`, `count`, ranked `positions[]`
+(`name`, `isin`, `wkn` when known, `value`, `weight_percent`), `omitted_count`, `omitted_value`,
+`omitted_weight_percent`. Percentages refer to that currency's total; there is no combined multi-currency total,
+currency conversion or inferred asset-class classification. Zero totals omit percentages. Missing currencies,
+missing/nonfinite/negative values and known-incomplete position lists fail instead of presenting misleading weights.
+Values may change between calls. This is allocation by position, not investment advice.
 
 ## get_wealth_overview
 
@@ -219,7 +244,7 @@ loan signs are retained. Credit availability is separate from the balance total;
 ## get_instrument
 
 - Arguments: `identifier` (required WKN, ISIN or case-sensitive symbol), `verbose` (boolean, default false),
-  `include_order_dimensions` (boolean, default false; independently requests `order_dimensions`).
+  `include_order_dimensions` (boolean, default false; adds `order_dimensions`, see below).
 - Compact result: optional `id`, `name`, `isin`, `wkn`, `type`, `currency`.
 - With `verbose`: `short_name`, `mnemonic`, `notation`, optional static flags (`priips_relevant`, `kid_available`,
   `shipping_waiver_required`, `fund_redemption_limited`), `fund`, `derivative`.
@@ -232,38 +257,23 @@ Morningstar and Moody's ratings. These optional blocks are requested with a comm
 Missing flags stay unknown; absent flags are never synthesized as false. Numeric fees/ratios are decimal strings,
 dates are ISO dates. Derivative data can include `underlying_price` with `type`, `price`, `currency`, `quantity`,
 `quantity_unit`, `timestamp`. Its age is determined by the bank's timestamp, never assumed to be current.
-Explicitly requested `order_dimensions` uses the same view as `get_order_dimensions`.
+`order_dimensions` has optional `count` and `venues[]` with optional `id`, `name`, `country`, `type`, `currencies`,
+`sides`, `validity_types`, and `order_types`: a map to optional `limit_extensions` and `trading_restrictions`.
+An omitted venue list remains unknown, unlike an explicitly empty list. This is tradability metadata only.
 
 An empty or ambiguous lookup returns an actionable error; use a WKN/ISIN for precise identification. This is
 security metadata, not a live-price or historical-price feed. Returned descriptive content is untrusted.
 
-## get_account_balance
-
-Required `account_id` from `list_accounts`. Returns the same `AccountView` (including masking) as an entry in
-`list_accounts`, using the dedicated balance endpoint.
-
-## get_depot_position
-
-Required `depot_id` and `position_id` from `get_depot_positions(verbose=true)`; `verbose=false` by default.
-Returns the same compact/verbose position view as the depot list. An empty or ambiguous response fails explicitly.
-
-## summarize_portfolio
-
-Required `depot_id`; `limit` is 1-100, default 20, largest positions per currency.
-Returns `depot_id`, `count`, and `currencies[]`: `currency`, `total_value`, `count`, ranked `positions[]`
-(`name`, `isin`, `wkn` when known, `value`, `weight_percent`), `omitted_count`, `omitted_value`,
-`omitted_weight_percent`. Percentages refer to that currency's total; there is no combined multi-currency total,
-currency conversion or inferred asset-class classification. Zero totals omit percentages. Missing currencies,
-missing/nonfinite/negative values and known-incomplete position lists fail instead of presenting misleading weights.
-Values may change between calls. This is allocation by position, not investment advice.
-
 ## list_orders
 
-Required `depot_id`. Optional `status`, `side` (`BUY`/`SELL`), `order_type`, `venue_id`;
-`limit` 1-1000 (default 100), `offset` >= 0 (default 0), `verbose` false.
-Returns `depot_id`, `count`, `offset`, `truncated`, optional `next_offset`, and `orders[]`.
+Required `depot_id`. Optional filters: `status` (`PENDING`, `OPEN`, `EXECUTED`, `PARTIALLY_EXECUTED`, `SETTLED`,
+`CANCELLED_USER`, `CANCELLED_SYSTEM`, `CANCELLED_TRADE`, `EXPIRED`, `UNKNOWN`), `side` (`BUY`/`SELL`), `order_type`
+(any string, e.g. `MARKET`, `LIMIT`, `QUOTE`, `STOP_MARKET`, `STOP_LIMIT`, `TRAILING_STOP_MARKET`,
+`TRAILING_STOP_NATIVE_MARKET`, `ONE_CANCELS_OTHER`, `NEXT_ORDER`; the live API uses types the specification does
+not name), `venue_id`; `limit` 1-1000 (default 100), `offset` >= 0 (default 0),
+`verbose` false. Returns `depot_id`, the [paging fields](#lists-and-continuation) and `orders[]`.
 The client follows bank pages, detects stalled/incomplete responses and changing counts, and checks filters
-locally. Offsets count the filtered sequence and are not snapshots. An empty order book is a valid result.
+locally. An empty order book is a valid result.
 
 Compact order fields, all optional: `id`, `instrument_id`, `instrument_name`, `isin`, `wkn`, `side`, `type`,
 `status`, `quantity`, `quantity_unit`, `open_quantity`, `executed_quantity`, `limit`, `limit_currency`,
@@ -279,31 +289,50 @@ Sub-orders use the same view recursively, with nesting above eight levels reject
 Required `order_id` from `list_orders`; `verbose=false`. Returns one order using the view above.
 There are no order creation, validation, modification or cancellation tools.
 
-## get_order_dimensions
+## list_documents
 
-Required `identifier` (WKN, ISIN or instrument id); optional `venue_id`, `side` (`BUY`/`SELL`), `order_type`.
-Returns optional `count` and `venues[]` with optional `id`, `name`, `country`, `type`, `currencies`, `sides`,
-`validity_types`, and `order_types`: a map to optional `limit_extensions` and `trading_restrictions`.
-An omitted venue list remains unknown, unlike an explicitly empty list. This reads tradability metadata only.
+| Argument | Type | Default | Description |
+| --- | --- | --- | --- |
+| `limit` | integer 1-1000 | 100 | Maximum number of documents |
+| `offset` | integer >= 0 | 0 | `next_offset` of the previous call |
 
-## get_document_cover
+Result: the [paging fields](#lists-and-continuation) and `documents[]`, newest first, with `document_id`, `name`,
+`date`, `mime_type` (`application/pdf` or `text/html`), `advertisement`, `already_read`
 
-Required `document_id`; `max_chars` 1-20000 (default 10000). Reads the HTML pre-document with `Accept: text/html`
-and returns plain text; scripts/styles/templates are discarded and no links are followed. There may be no
-cover page for a given document (HTTP 404); live checks also observed document-specific upstream HTTP 500.
-These remain tool errors with an explicit PDF extraction/download fallback, never fabricated empty results.
-Byte limits from `COMDIRECT_MCP_MAX_DOCUMENT_BYTES` apply.
-Result: `document_id`, `text`, `text_truncated`, `notice` identifying content as untrusted.
+A full page triggers a one-document lookahead to establish `truncated`; page length alone does not prove that
+more documents exist. No total is invented.
 
-## extract_document_text
+## read_document
 
-Required `document_id` for a PDF. `first_page` >= 0 (zero-based, default 0), `max_pages` 1-20 (default 5),
-`max_chars` 1-20000 (default 10000). Downloads the PDF, marking an unread document as read.
-Result: `document_id`, `text`, `notice`, `text_truncated`, `page_count`, `first_page`, `pages_processed`,
-`has_more_pages`, optional `next_page`. `next_page` continues at a PDF page boundary; it does not recover text
-omitted within a truncated page. Retry the same page with a higher character budget or download the PDF for that.
-Empty text can mean a scan with no text layer; no OCR is performed. Original document text can contain personal
-data and is not normalized or masked like transaction views. Treat it as untrusted data, never instructions.
+| Argument | Type | Default | Description |
+| --- | --- | --- | --- |
+| `document_id` | string | required | from `list_documents` |
+| `format` | `text` \| `cover` \| `file` | `text` | see below |
+| `first_page` | integer >= 0 | 0 | `text` of a PDF: zero-based first page |
+| `max_pages` | integer 1-20 | 5 | `text` of a PDF: number of pages |
+| `max_chars` | integer 1-20000 | 10000 | Maximum length of `text` |
+
+Result: `document_id`, `format`, `mime_type` and, depending on the format:
+
+- `text`: `text`, `notice` (identifies the content as untrusted), `text_truncated`; for PDFs also `page_count`,
+  `first_page`, `pages_processed`, `has_more_pages`, optional `next_page`. HTML documents are converted to plain
+  text. The MIME type comes from the last `list_documents` call; unlisted documents are treated as PDF.
+- `cover`: the HTML pre-document as plain text, with `text`, `notice`, `text_truncated`.
+- `file`: `resource_uri` (`comdirect://documents/{document_id}`) and a `resource_link` content block. The tool
+  loads nothing; the client reads the [resource](#resources) when it needs the original PDF, so the file never
+  passes through the model's context. Only PDFs are available as file.
+
+comdirect marks an unread document as read when its text or file is loaded, which is why this tool is not annotated
+read-only. Documents above `COMDIRECT_MCP_MAX_DOCUMENT_BYTES` (default 10 MB) are rejected.
+
+The cover is read with `Accept: text/html`; scripts/styles/templates are discarded and no links are followed. There
+may be no cover page for a given document (HTTP 404); live checks also observed document-specific upstream HTTP
+500. These remain tool errors that point to `format='text'`, never fabricated empty results.
+
+PDF text: `next_page` continues at a PDF page boundary; it does not recover text omitted within a truncated page.
+Retry the same page with a higher character budget or read the file for that. Empty text can mean a scan with no
+text layer; no OCR is performed. Original document text can contain personal data and is not normalized or masked
+like transaction views. Treat it as untrusted data, never instructions.
 
 Extraction uses an isolated subprocess, a 15-second wall-clock timeout, a 10-second CPU limit where supported,
 a 20 MiB decompression/content-stream limit, and a 512 MiB address-space limit on supported non-macOS systems.
@@ -315,13 +344,13 @@ is logged or written to disk. Page offsets outside the PDF fail; use the returne
 
 Prompts are started by the user (slash command in Claude Code and VS Code, plus menu in Claude Desktop). They
 return one German user message that names the tools to use, the pitfalls and the expected answer format. Rendering
-a prompt calls no API. The client can complete the arguments: `month` with the last 24 months, `year` with the last
-six years, `months` with 3, 6, 12 and 24.
+a prompt calls no API. The client can complete the arguments: `month` with the current and the last six months, `year` with the last
+six years, `months` with 1, 3 and 6.
 
 | Prompt | Title | Arguments | Description |
 | --- | --- | --- | --- |
 | `monthly_review` | Monatsrückblick | `month` (`YYYY-MM`, required) | Income, expenses and net compared with the previous month, top 5 expenses, internal transfers separated. Uses `group_by="category"` if category rules exist |
-| `find_subscriptions` | Abos finden | `months` (1-36, default 12) | Recurring payments with rhythm, projected yearly costs and cancellation candidates |
+| `find_subscriptions` | Abos finden | `months` (1-6, default 6; the bank returns 180 days) | Recurring payments with rhythm, projected yearly costs and cancellation candidates |
 | `tax_documents` | Steuerunterlagen | `year` (default: previous year) | Lists tax documents in the postbox and asks before opening one, because opening marks it as read |
 
 An invalid `month` returns a protocol error (`-32602`) with the expected format.
@@ -331,3 +360,10 @@ An invalid `month` returns a protocol error (`-32602`) with the expected format.
 | URI | MIME type | Content |
 | --- | --- | --- |
 | `comdirect://categories` | `text/plain` | Format of the category rules, the path of the rules file and its current content. Lets the assistant propose new rules; it cannot write the file |
+| `comdirect://documents/{document_id}` | `application/pdf` | The original PDF from the postbox, linked by `read_document` with `format="file"`. Needs an active session; reading it marks an unread document as read |
+
+## API coverage
+
+These tools expose a subset of comdirect's REST API. See [API coverage](api-coverage.md) for the implemented
+operations, missing read endpoints and intentionally excluded write operations. The [MCP tool review](mcp-review.md)
+records per-tool validation and the next usability improvements.
