@@ -3,7 +3,7 @@
   "name": "io.github.mad4ms/comdirect-mcp",
   "title": "comdirect",
   "description": "Read-only access to comdirect accounts, transactions, depots, orders and postbox documents.",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "websiteUrl": "https://github.com/mad4ms/comdirect-mcp",
   "repository": {
     "url": "https://github.com/mad4ms/comdirect-mcp",
@@ -13,7 +13,7 @@
     {
       "registryType": "pypi",
       "identifier": "comdirect-mcp",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-13
+
+### Changed
+
+- Shorter README; it no longer pins the previous version in its update note.
+- Documentation: the getting-started tutorial and client guide mention clients that show no login dialog, the
+  categories guide explains when a rule for transfers is still needed, and the developer guide matches the 0.6.0
+  tools.
+
+### Fixed
+
+- The PDF extraction timeout message pointed to the removed `download_document` tool.
+
 ## [0.6.0] - 2026-10-13
 
 ### Breaking
@@ -216,7 +229,8 @@ Compared against comdirect's PDF documentation (*REST API – Schnittstellenspez
 
 - Initial release: OAuth + 2FA login, accounts, transactions, depots.
 
-[Unreleased]: https://github.com/mad4ms/comdirect-mcp/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/mad4ms/comdirect-mcp/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/mad4ms/comdirect-mcp/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/mad4ms/comdirect-mcp/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/mad4ms/comdirect-mcp/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/mad4ms/comdirect-mcp/compare/v0.4.0...v0.5.0

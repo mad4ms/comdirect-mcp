@@ -36,7 +36,7 @@ More details: [Get comdirect API access](../how-to/get-comdirect-api-access.md).
 ## 2. Store your credentials in the keychain
 
 ```bash
-uvx comdirect-mcp@0.6.0 configure
+uvx comdirect-mcp@0.6.1 configure
 ```
 
 Enter the Client ID, Client Secret, Zugangsnummer and PIN. Secret values are not shown while you type. They are
@@ -54,7 +54,7 @@ The client only needs to know how to start the server; no credentials go into it
   "mcpServers": {
     "comdirect": {
       "command": "uvx",
-      "args": ["comdirect-mcp@0.6.0"]
+      "args": ["comdirect-mcp@0.6.1"]
     }
   }
 }
@@ -71,6 +71,7 @@ Ask your assistant:
 1. The assistant calls the `login` tool. Your phone receives a photoTAN push notification.
 2. Approve the login in the photoTAN app.
 3. Your client shows a dialog *"comdirect: Bitte die Anmeldung in der photoTAN-App freigeben ..."*. Confirm it.
+   Some clients, e.g. Claude Code, show no dialog; the server then waits 30 seconds for your approval in the app.
 4. The assistant lists your accounts.
 
 Now try:

@@ -57,5 +57,5 @@ To improve the rules, ask the assistant to suggest new ones: the result lists th
 without a matching rule as `uncategorized`. The assistant can read the current file through the
 `comdirect://categories` resource, but it cannot change it; you edit the file.
 
-Transfers between your own accounts are left out of the categories and reported as `internal_transfers`, so no
-rule is needed for them.
+Transfers between your comdirect accounts are left out of the categories and reported as `internal_transfers`. A
+rule like `Umbuchung` above is only needed for transfers to your accounts at other banks.

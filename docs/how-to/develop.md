@@ -52,7 +52,7 @@ The test suite has three layers:
   response shapes, catching incompatibilities of the generated code with pydantic/urllib3 upgrades
 - `test_mcp_server.py`: the MCP server through the SDK's in-memory client, with both the 2026-07-28 protocol
   (multi round-trip requests) and the legacy protocol; validates every structured result against its output schema
-- `test_stdio_server.py`: all twenty-one tools over actual subprocess pipes in both protocol modes, with synthetic
+- `test_stdio_server.py`: all tools over actual subprocess pipes in both protocol modes, with synthetic
   credentials/authentication and the fake bank transport; no network
 - `test_credentials.py`: credential precedence and `comdirect-mcp configure` (in-memory keychain, see `conftest.py`)
 - `test_packaging.py`: `pyproject.toml`, `server.json` and README stay consistent
@@ -97,8 +97,8 @@ no access to server internals. The live run covers all available accounts/depots
 transactions, date/direction filters, all summary groupings, wealth products/aggregates, depot movements,
 compact/verbose metadata for every identifiable holding, document paging, an already-read PDF and invalid
 arguments. It masks names and account numbers, suppresses stderr/details, and persists no financial data.
-The expanded check also covers single account/position reads, order books and dimensions, portfolio consistency,
-plain cover text and bounded PDF text. An empty order book cannot verify a successful individual-order lookup;
+The expanded check also covers the summary over all accounts with internal transfers, recurring payments, order
+books and order dimensions, portfolio consistency, plain cover text and bounded PDF text. An empty order book cannot verify a successful individual-order lookup;
 that is reported as skipped, with only the missing-id error tested. Cover-page HTTP 500 remains a failed check,
 even when another document's cover works. No response content is persisted.
 Use `--server-command /path/to/comdirect-mcp --offline` to check an isolated wheel installation without login.

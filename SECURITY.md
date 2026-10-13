@@ -33,7 +33,7 @@ Only the latest release is supported with fixes.
   untrusted in its instructions, but no model is immune.
 - **Personal data.** Counterparty IBANs and account numbers are masked by default, names only on request
   (`COMDIRECT_MCP_MASK_NAMES`); amounts and payment texts are not.
-- **Supply chain.** Pin the version you run (for example `uvx comdirect-mcp@0.6.0`) instead of
+- **Supply chain.** Pin the version you run (for example `uvx comdirect-mcp@0.6.1`) instead of
   always pulling the latest release, and review changes before upgrading.
 
 ## Safeguards in this repository
