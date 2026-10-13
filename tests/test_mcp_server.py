@@ -1,4 +1,5 @@
 import base64
+import logging
 from datetime import date
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
@@ -57,6 +58,10 @@ async def decline(context, params):
     return ElicitResult(action="decline")
 
 
+async def cancel(context, params):
+    return ElicitResult(action="cancel")
+
+
 @pytest.mark.anyio
 @pytest.mark.parametrize("mode", ["auto", "legacy"])
 async def test_login_with_push_tan_elicitation(comdirect, mode):
@@ -76,8 +81,36 @@ async def test_login_declined(comdirect):
         result = await client.call_tool("login", {})
 
     assert result.is_error
+    assert "declined" in result.content[0].text
     comdirect.complete_login.assert_not_called()
     assert mcp_server._state._pending is None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("mode", ["auto", "legacy"])
+async def test_login_logs_client_and_answer(comdirect, mode, caplog):
+    caplog.set_level(logging.INFO, logger="comdirect_mcp")
+    async with Client(mcp_server.mcp, mode=mode, elicitation_callback=decline) as client:
+        await client.call_tool("login", {})
+
+    log = caplog.text
+    assert "login round: protocol=" in log
+    assert "login: started challenge typ=P_TAN_PUSH" in log
+    assert "login outcome: {'action': 'decline'}" in log
+    if mode == "auto":
+        assert "'action': 'decline'" in log.split("login answer", 1)[1]
+
+
+@pytest.mark.anyio
+async def test_login_cancelled_reports_cancel_and_warns_against_retry(comdirect):
+    async with Client(mcp_server.mcp, elicitation_callback=cancel) as client:
+        result = await client.call_tool("login", {})
+
+    assert result.is_error
+    message = result.content[0].text
+    assert "cancelled" in message
+    assert "do not retry automatically" in message
+    comdirect.complete_login.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -86,6 +119,7 @@ async def test_login_not_approved_in_form(comdirect):
         result = await client.call_tool("login", {})
 
     assert result.is_error
+    assert "Freigegeben" in result.content[0].text
     comdirect.complete_login.assert_not_called()
 
 
@@ -93,6 +127,18 @@ async def test_login_not_approved_in_form(comdirect):
 async def test_login_without_elicitation_waits_for_push(comdirect, monkeypatch):
     monkeypatch.setattr(mcp_server, "PUSH_TAN_FALLBACK_WAIT", 0)
     async with Client(mcp_server.mcp) as client:
+        result = await client.call_tool("login", {})
+
+    assert not result.is_error, result.content
+    comdirect.complete_login.assert_called_once_with(PUSH_CHALLENGE)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("mode", ["auto", "legacy"])
+async def test_login_skip_elicitation_waits_instead_of_asking(comdirect, monkeypatch, mode):
+    monkeypatch.setattr(mcp_server, "PUSH_TAN_FALLBACK_WAIT", 0)
+    monkeypatch.setattr(mcp_server, "SKIP_ELICITATION", True)
+    async with Client(mcp_server.mcp, mode=mode, elicitation_callback=decline) as client:
         result = await client.call_tool("login", {})
 
     assert not result.is_error, result.content

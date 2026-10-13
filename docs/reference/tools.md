@@ -88,11 +88,11 @@ individual transactions out of the model's context.
 | `account_id` | string | required | `id` from `list_accounts` |
 | `min_booking_date` | date | required | First booking date, inclusive |
 | `max_booking_date` | date \| null | null (today) | Last booking date, inclusive |
-| `group_by` | `month` \| `counterparty` \| `type` | `month` | Grouping |
+| `group_by` | `month` \| `counterparty` \| `type` \| `category` | `month` | Grouping; `category` uses the local [category rules](../how-to/categorize-transactions.md) |
 | `max_groups` | integer 2-200 | 30 | Further groups are merged into `(other)` |
 
 Result: `account_id`, `currency`, `min_booking_date`, `max_booking_date`, `group_by`, totals `count`, `income`,
-`expenses` (negative), `net`, and `groups[]` with `key` (`YYYY-MM`, counterparty or type), `income`, `expenses`,
+`expenses` (negative), `net`, and `groups[]` with `key` (`YYYY-MM`, counterparty, type or category), `income`, `expenses`,
 `net`, `count`. Months are sorted chronologically, other groups by volume. `groups_truncated` and
 `transactions_truncated` (more than 10,000 transactions) flag incomplete results. Accounts with transactions in
 several currencies, or transactions missing an amount or currency, return an error rather than misleading totals.
@@ -100,6 +100,10 @@ The end date defaults to today and is returned explicitly; a reversed date range
 `income` and `expenses` mean incoming/outgoing bookings, including transfers between your own accounts.
 They are not automatically earned income or consumption. Inspect individual bookings before interpreting them
 that way or combining several accounts; internal transfers can appear on both sides.
+
+With `group_by="category"` the first matching rule decides the group; transactions without a match are grouped as
+`(uncategorized)`. Rules match the real counterparty name, also when `COMDIRECT_MCP_MASK_NAMES` is set; the result
+only contains the category names. A missing or invalid rules file is an error that names the file.
 
 ## list_cards
 
@@ -306,3 +310,24 @@ a 20 MiB decompression/content-stream limit, and a 512 MiB address-space limit o
 The PDF byte limit is the smaller of the configured document limit and 10 MiB. PDFs are kept in memory only;
 encrypted, invalid or excessive PDFs fail with an actionable message. No content, password or parser diagnostic
 is logged or written to disk. Page offsets outside the PDF fail; use the returned `page_count`.
+
+## Prompts
+
+Prompts are started by the user (slash command in Claude Code and VS Code, plus menu in Claude Desktop). They
+return one German user message that names the tools to use, the pitfalls and the expected answer format. Rendering
+a prompt calls no API. The client can complete the arguments: `month` with the last 24 months, `year` with the last
+six years, `months` with 3, 6, 12 and 24.
+
+| Prompt | Title | Arguments | Description |
+| --- | --- | --- | --- |
+| `monthly_review` | Monatsrückblick | `month` (`YYYY-MM`, required) | Income, expenses and net compared with the previous month, top 5 expenses, internal transfers separated. Uses `group_by="category"` if category rules exist |
+| `find_subscriptions` | Abos finden | `months` (1-36, default 12) | Recurring payments with rhythm, projected yearly costs and cancellation candidates |
+| `tax_documents` | Steuerunterlagen | `year` (default: previous year) | Lists tax documents in the postbox and asks before opening one, because opening marks it as read |
+
+An invalid `month` returns a protocol error (`-32602`) with the expected format.
+
+## Resources
+
+| URI | MIME type | Content |
+| --- | --- | --- |
+| `comdirect://categories` | `text/plain` | Format of the category rules, the path of the rules file and its current content. Lets the assistant propose new rules; it cannot write the file |

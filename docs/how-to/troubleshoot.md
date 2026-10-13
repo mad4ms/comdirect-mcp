@@ -11,8 +11,9 @@ Code via `/mcp`, VS Code in the *Output* panel (*MCP: List Servers → Show Outp
 | `Primary OAuth failed (HTTP 401)` | Wrong Client ID/Secret, Zugangsnummer or PIN | Check the values; do not retry blindly, repeated failures can lock the access |
 | `comdirect offered TAN method M_TAN/P_TAN instead of photoTAN push` | photoTAN Push is not activated, or comdirect ignored the requested method | Activate photoTAN Push and set it as default in the online banking |
 | `... TAN challenges were started without a confirmed TAN ...` | Protection against the lock after 5 unconfirmed challenges | Log in once on comdirect.de with a TAN, then restart the MCP server (restart your client) |
-| `Login was not approved by the user.` | The confirmation dialog was declined or cancelled | Call `login` again |
+| `Login was not approved by the user. ...` | The dialog was declined, cancelled (some clients cancel without showing it) or submitted without ticking *Freigegeben*; the message names which | Call `login` again only when the user is ready to approve; each attempt counts as an unconfirmed challenge |
 | `TAN confirmation failed` | The dialog was confirmed before the push was approved in the app, or the push expired | Approve in the app first, then confirm; call `login` again |
+| Dialog approved, but the login reports *declined* | The client sent `decline` | Set `COMDIRECT_MCP_LOG_FILE`, log in once and check the `login round` and `login answer` lines: they show the client, its elicitation capability and its raw answer. A `decline` within milliseconds comes from the client, not from you: set `COMDIRECT_MCP_SKIP_ELICITATION=1` |
 | Login hangs, then the client reports a timeout | The client waits for the dialog or the fallback window | Approve faster, or raise the client's tool timeout |
 
 ## During use

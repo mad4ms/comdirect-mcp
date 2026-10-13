@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Prompts `monthly_review`, `find_subscriptions` and `tax_documents`: ready-made analyses that name the right
+  tools and pitfalls (internal transfers, documents marked as read). The client can complete their arguments.
+- Local category rules (`~/.config/comdirect-mcp/categories.toml`, `COMDIRECT_MCP_CATEGORIES`) and
+  `summarize_transactions(group_by="category")`. The rules are applied on the server; the resource
+  `comdirect://categories` shows their format and current content.
+- `COMDIRECT_MCP_SKIP_ELICITATION=1` replaces the login confirmation dialog with the fixed approval window, for
+  clients that decline the dialog without showing it (seen with Claude Code 2.1.296 on protocol 2026-07-28).
+
+### Changed
+
+- A login that is not approved now says whether the dialog was declined, cancelled or submitted without approval,
+  and tells the agent not to retry without asking, since each attempt counts towards comdirect's lock after 5.
+- The login logs the client's name, protocol version, elicitation capability and raw answer, and each challenge
+  step. `COMDIRECT_MCP_LOG_FILE` and `COMDIRECT_MCP_LOG_LEVEL` set where and how much the server logs.
+
 ## [0.5.1] - 2026-10-10
 
 ### Fixed

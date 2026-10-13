@@ -12,13 +12,14 @@ import hmac
 import os
 import secrets
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from datetime import date
 from decimal import Decimal
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from .categories import CategoryRule, categorize
 from .domain.models import (
     Account,
     AccountHolder,
@@ -157,11 +158,11 @@ def transaction_view(tx: Transaction, verbose: bool = False) -> TransactionView:
 
 # --------- Summaries ---------
 
-GroupBy = Literal["month", "counterparty", "type"]
+GroupBy = Literal["month", "counterparty", "type", "category"]
 
 
 class SummaryGroup(BaseModel):
-    key: str = Field(description="YYYY-MM, counterparty name or transaction type")
+    key: str = Field(description="YYYY-MM, counterparty name, transaction type or category")
     income: Decimal
     expenses: Decimal = Field(description="sum of outgoing amounts (negative)")
     net: Decimal
@@ -183,7 +184,9 @@ class TransactionSummary(BaseModel):
     transactions_truncated: bool = Field(description="True if not all transactions in the range were summarized")
 
 
-def _group_key(tx: Transaction, group_by: GroupBy) -> str:
+def _group_key(tx: Transaction, group_by: GroupBy, categories: Sequence[CategoryRule]) -> str:
+    if group_by == "category":
+        return categorize(tx, categories)
     if group_by == "month":
         return tx.booking_date.strftime("%Y-%m") if tx.booking_date else "(pending)"
     if group_by == "type":
@@ -205,15 +208,19 @@ def summarize(
     min_booking_date: date | None = None,
     max_booking_date: date | None = None,
     transactions_truncated: bool = False,
+    categories: Sequence[CategoryRule] = (),
 ) -> TransactionSummary:
-    """Sums incoming and outgoing amounts per group. Raises ValueError for mixed currencies."""
+    """
+    Sums incoming and outgoing amounts per group. Raises ValueError for mixed currencies.
+    `categories` are the rules for group_by="category"; they see unmasked counterparty names.
+    """
     amounts_by_key: dict[str, list[Decimal]] = defaultdict(list)
     currencies = set()
     for tx in transactions:
         if tx.amount is None or not tx.currency:
             raise ValueError("A transaction is missing its amount or currency; totals cannot be calculated.")
         currencies.add(tx.currency)
-        amounts_by_key[_group_key(tx, group_by)].append(tx.amount)
+        amounts_by_key[_group_key(tx, group_by, categories)].append(tx.amount)
     if len(currencies) > 1:
         raise ValueError(f"The account has transactions in several currencies ({', '.join(sorted(currencies))}).")
 

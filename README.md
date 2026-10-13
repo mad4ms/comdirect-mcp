@@ -22,7 +22,9 @@ postbox documents. The login is confirmed with your photoTAN app, and there is n
 
 Leute, hier geht es um euer Geld. Nutzt diese Bibliothek nur, wenn ihr den Code versteht und die Risiken kennt.
 
-Ich bin nicht perfekt. Die Software steht unter der [MIT-Lizenz](LICENSE): Jeder darf damit machen, was er/sie will (auch ihr, comdirect 👀), aber ohne jede Gewährleistung. Ich übernehme keine Haftung für Schäden durch ihre Nutzung. Wenn euch etwas auffällt: PRs und Issues sind willkommen.
+Die Software steht unter der [MIT-Lizenz](LICENSE): Jeder darf damit machen, was er/sie will (auch ihr, comdirect 👀), aber ohne jede Gewährleistung. Ich übernehme keine Haftung für Schäden durch ihre Nutzung. Wenn euch etwas auffällt: PRs und Issues sind willkommen.
+
+Transparenz: Ein Teil des Codes stammt von Opus 5.5 und gpt-6.1-sol, ich habe reviewed, getestet und weise genickt. Genau deshalb steht oben, dass ihr den Code verstehen solltet. Den MCP-Server selbst habe ich lokal mit einem Modell über Ollama getestet, ganz ohne Cloud.
 
 Das Repo nutzt aktuell nur lesende Endpunkte der API, aber Fehler passieren trotzdem. comdirect kann die API jederzeit ändern, Dependencies können kompromittiert werden ([Supply-Chain-Angriffe](https://docs.github.com/de/code-security/concepts/supply-chain-security/about-supply-chain-security)), und 2FA hilft zwar, ist aber nun wirklich kein Freifahrtschein.
 
@@ -30,13 +32,13 @@ Deshalb bitte:
 
 - Nutzt das Ganze nur lokal auf eurem eigenen Rechner.
 - Gebt eure Zugangsdaten niemandem weiter.
-- Legt eure Zugangsdaten im OS-Schlüsselbund ab (`comdirect-mcp configure`). Falls ihr doch eine `.env` nutzt: Dort steht der PIN im Klartext, also committet sie niemals.
-- Nutzt bei Forks die [Pre-Commit-Hooks](docs/how-to/develop.md#pre-commit-hooks), um nach Secrets zu scannen. Gute Gelegenheit, ein bisschen DevOps zu lernen.
+- Legt eure Zugangsdaten im OS-Schlüsselbund ab (`comdirect-mcp configure`). Falls ihr doch eine `.env` nutzt: Dort steht das Passwort im Klartext, also committet sie niemals.
+- Nutzt bei Clones/Forks die [Pre-Commit-Hooks](docs/how-to/develop.md#pre-commit-hooks), um nach Secrets zu scannen. 
 - Spielt Updates nicht blind ein (Lockfile und Pinning helfen) und schaut euch Änderungen kurz an.
 
-**MCP-Server**: Sobald ihr den Server an einen AI-Client hängt, der nicht lokal läuft, **verlassen eure Daten euren Rechner**. Je nach Client und Setup können Kontodaten und Umsätze in Logs/Telemetrie im Ausland landen. Außerdem können Dokumente oder Verwendungszwecke Prompt-Injections enthalten, die das Modell in komische Richtungen lenken ([MCP Horror Stories: The GitHub Prompt Injection Data Heist](https://www.docker.com/blog/mcp-horror-stories-github-prompt-injection/)). Nutzt deshalb den MCP nur in Umgebungen, denen ihr wirklich vertraut, und gebt nur die Daten frei, die ihr tatsächlich braucht.
+**MCP-Server**: Sobald ihr den Server an einen AI-Client hängt, der nicht lokal läuft, **verlassen eure Daten euren Rechner**. Je nach Client und Setup können Kontodaten und Umsätze in Logs/Telemetrie im Ausland landen. Außerdem können (wenn auch unwahrscheinlich) Dokumente oder Verwendungszwecke Prompt-Injections enthalten, die das Modell in komische Richtungen lenken ([MCP Horror Stories: The GitHub Prompt Injection Data Heist](https://www.docker.com/blog/mcp-horror-stories-github-prompt-injection/)). Nutzt deshalb den MCP nur in Umgebungen, denen ihr wirklich vertraut, und gebt nur die Daten frei, die ihr tatsächlich braucht.
 
-Da der gemeine r/finanzen - User seine Kontoauszüge eh schon in ChatGPT kopiert: Macht damit, was ihr wollt, aber **auf eigene Verantwortung**! Am besten ohne unnötige personenbezogene Daten. Endlich könnt ihr eurem Date per Claude erstelltes Chart vorrechnen, was der erste Beziehungsmonat gegenüber dem letzten Singlemonat gekostet hat. ([Kontext](https://www.reddit.com/r/Finanzen/comments/imznol/neue_freundin_und_umfeld_durchkreuzen_meine/)). (Hauptsache, ihr lasst 'nen Stern da.)
+Da der gemeine r/finanzen - User seine Kontoauszüge eh schon in ChatGPT kopiert: Macht damit, was ihr wollt, aber **auf eigene Verantwortung**! Aber endlich könnt ihr eurem Date per Claude erstelltes Chart vorrechnen, was der erste Beziehungsmonat gegenüber dem letzten Singlemonat gekostet hat ([Kontext](https://www.reddit.com/r/Finanzen/comments/imznol/neue_freundin_und_umfeld_durchkreuzen_meine/)). (Hauptsache, ihr lasst 'nen Stern da.)
 
 ## Privacy: prefer a local model
 
@@ -81,7 +83,7 @@ Details: [Privacy and security](docs/explanation/privacy-and-security.md) ·
 | `list_depot_transactions` | Securities purchases, sales and transfers with filters and continuation |
 | `get_instrument` | Security metadata; optional fund fees/ratings and derivative details |
 | `list_transactions` | Transactions with date, amount, counterparty and cleaned-up purpose; compact by default |
-| `summarize_transactions` | Cash flow and spending per month, counterparty or type, computed on the server |
+| `summarize_transactions` | Cash flow and spending per month, counterparty, type or your own categories, computed on the server |
 | `list_cards` | Card balances (Visa); the API has no card transactions |
 | `list_depots` | Securities accounts |
 | `get_depot_positions` | Positions (name, ISIN, WKN, values, P&L) and depot balance |
@@ -96,6 +98,19 @@ Details: [Privacy and security](docs/explanation/privacy-and-security.md) ·
 | `extract_document_text` | Bounded PDF text with page continuation; downloading marks it as read |
 
 Arguments and results: [Tools reference](docs/reference/tools.md).
+
+### Prompts
+
+Ready-made analyses you start yourself, e.g. as slash command in Claude Code and VS Code:
+
+| Prompt | Description |
+| --- | --- |
+| `monthly_review` | Income and expenses of a month compared with the previous month |
+| `find_subscriptions` | Recurring payments with projected yearly costs and cancellation candidates |
+| `tax_documents` | Tax documents of a year in the postbox, listed before anything is opened |
+
+Categories for `summarize_transactions` come from a local rules file:
+[Categorize transactions](docs/how-to/categorize-transactions.md).
 
 ## Quickstart
 

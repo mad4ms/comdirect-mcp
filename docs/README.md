@@ -15,6 +15,7 @@ Using the server:
 - [Manage credentials](how-to/manage-credentials.md): OS keychain, VS Code inputs, environment, `.env`
 - [Configure MCP clients](how-to/configure-mcp-clients.md): Claude Desktop, Claude Code, VS Code, LM Studio, Ollama, others
 - [Use a local model](how-to/use-a-local-model.md)
+- [Categorize transactions](how-to/categorize-transactions.md): local category rules for spending summaries
 - [Troubleshoot](how-to/troubleshoot.md)
 - [Use the Python library](how-to/use-the-python-library.md)
 
@@ -26,7 +27,7 @@ Working on the project:
 
 ## Reference
 
-- [Tools](reference/tools.md): arguments, results and annotations of every MCP tool
+- [Tools](reference/tools.md): arguments, results and annotations of every MCP tool, plus prompts and resources
 - [Configuration](reference/configuration.md): commands, credentials, environment variables, protocol
 - [MCP tool review](reference/mcp-review.md): per-tool findings, validation boundaries and next priorities
 - [API coverage](reference/api-coverage.md): mapping to the comdirect specification and remaining gaps
