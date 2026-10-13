@@ -8,7 +8,7 @@ is between `comdirect-mcp` and comdirect. Why this matters: [Privacy and securit
 1. Install [LM Studio](https://lmstudio.ai) and download a model with good **tool calling** support. Larger
    instruction-tuned models (e.g. recent Qwen, Llama or Mistral releases with tool use) work noticeably better
    than small ones, which tend to call tools with wrong arguments or invent numbers.
-2. Store your credentials in the keychain: `uvx comdirect-mcp@0.6.0 configure`
+2. Store your credentials in the keychain: `uvx comdirect-mcp@0.6.1 configure`
    ([Manage credentials](manage-credentials.md)).
 3. In LM Studio open the *Program* tab in the right sidebar → *Install* → *Edit mcp.json* and add:
 
@@ -17,7 +17,7 @@ is between `comdirect-mcp` and comdirect. Why this matters: [Privacy and securit
      "mcpServers": {
        "comdirect": {
          "command": "uvx",
-         "args": ["comdirect-mcp@0.6.0"]
+         "args": ["comdirect-mcp@0.6.1"]
        }
      }
    }
@@ -37,11 +37,11 @@ Ollama has no built-in MCP client, so you connect the two with
 1. Install [Ollama](https://ollama.com) and pull a model that supports tools. `ollama show <model>` lists `tools`
    under *Capabilities* if it does. Prefer larger models; very small ones (around 4B parameters) call tools
    unreliably.
-2. Store your credentials in the keychain: `uvx comdirect-mcp@0.6.0 configure`.
+2. Store your credentials in the keychain: `uvx comdirect-mcp@0.6.1 configure`.
 3. Register the server once for all projects (no secrets in ollmcp's config):
 
    ```bash
-   uvx ollmcp mcp add --scope user comdirect -- uvx comdirect-mcp@0.6.0
+   uvx ollmcp mcp add --scope user comdirect -- uvx comdirect-mcp@0.6.1
    ```
 
 4. Start a chat with your model:
@@ -62,7 +62,7 @@ your machine. Server logs are written to `~/.config/ollmcp/logs/`.
 
 ## With other local setups
 
-Any MCP client that talks to a local model works the same way: register `uvx comdirect-mcp@0.6.0` as a stdio
+Any MCP client that talks to a local model works the same way: register `uvx comdirect-mcp@0.6.1` as a stdio
 server. Check that the client really uses a local model for the chat (no cloud fallback) and that it does not send
 telemetry with conversation content.
 

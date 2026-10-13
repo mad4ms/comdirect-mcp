@@ -11,7 +11,7 @@
 | `comdirect-mcp --version` | Prints the version |
 | `python -m comdirect_mcp [...]` | Same as `comdirect-mcp [...]` |
 
-Run without installing: `uvx comdirect-mcp@0.6.0 [...]`.
+Run without installing: `uvx comdirect-mcp@0.6.1 [...]`.
 
 ## Credentials
 

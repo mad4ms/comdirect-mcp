@@ -66,7 +66,7 @@ def pdf_text(content: bytes, first_page: int, max_pages: int, max_chars: int) ->
         )
     except subprocess.TimeoutExpired as error:
         raise DataError(
-            "PDF extraction exceeded 15 seconds. Request fewer pages or use `download_document`."
+            "PDF extraction exceeded 15 seconds. Request fewer pages or use `read_document` with format='file'."
         ) from error
     if result.returncode:
         raise DataError(
