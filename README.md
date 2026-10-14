@@ -13,6 +13,8 @@
 local model look at your accounts, transactions, depot and postbox. You approve the login in the photoTAN app, and
 no tool can move money.
 
+![LM Studio with a local model answers „Welche Abos zahle ich, und was kosten sie im Jahr?“ (synthetic sample data)](docs/assets/demo.gif)
+
 > [!WARNING]
 > Unofficial, not affiliated with comdirect. It handles your banking credentials, and every tool result goes to the
 > model behind your MCP client: with a cloud assistant your financial data leaves your computer. For the most

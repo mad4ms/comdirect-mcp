@@ -6,6 +6,7 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-added-large-files
+        exclude: ^docs/assets/demo\.gif$  # README demo, kept readable
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.17.0
