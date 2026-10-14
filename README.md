@@ -86,7 +86,14 @@ claude mcp add --transport stdio --scope user comdirect -- uvx comdirect-mcp@0.6
 or Claude Desktop, LM Studio and others:
 
 ```json
-{ "mcpServers": { "comdirect": { "command": "uvx", "args": ["comdirect-mcp@0.6.1"] } } }
+{
+  "mcpServers": {
+    "comdirect": {
+      "command": "uvx",
+      "args": ["comdirect-mcp@0.6.1"]
+    }
+  }
+}
 ```
 
 Then ask, e.g. *„Welche Abos zahle ich, und was kosten sie im Jahr?“* The assistant calls `login` and you approve
